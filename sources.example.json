@@ -1,0 +1,12 @@
+[
+  {
+    "imdb_id": "tt0133093",
+    "sources": [
+      {
+        "server": "My authorized media server",
+        "quality": "1080p",
+        "url": "https://media.example.org/movies/the-matrix-1080p.mp4"
+      }
+    ]
+  }
+]
