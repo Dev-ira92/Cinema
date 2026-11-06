@@ -7,6 +7,19 @@
 
 #define LOG(...) fprintf(stderr, __VA_ARGS__), fprintf(stderr, "\n")
 
+/* Application identity and error logger used by main.c. */
+#ifndef APP_NAME
+#define APP_NAME "CineHub"
+#endif
+
+#ifndef ERR
+#define ERR(...) do { \
+    fprintf(stderr, "[ERROR] "); \
+    fprintf(stderr, __VA_ARGS__); \
+    fputc('\n', stderr); \
+} while (0)
+#endif
+
 typedef struct {
     unsigned char *d;
     size_t         n;
