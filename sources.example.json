@@ -1,9 +1,0 @@
-[
-  {
-    "imdb_id": "tt1375666",
-    "sources": [
-      { "server": "Home NAS", "quality": "1080p", "url": "http://192.168.1.50:8080/movies/Inception.1080p.mkv" },
-      { "server": "Home NAS", "quality": "720p",  "url": "http://192.168.1.50:8080/movies/Inception.720p.mkv" }
-    ]
-  }
-]
