@@ -1,4 +1,5 @@
-name: Build CineHub
+
+name: Build CineHub for PS5
 
 on:
   push:
@@ -7,53 +8,136 @@ on:
 jobs:
   build:
     runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
 
-      - name: Install clang and lld
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install build tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang-18 lld-18 llvm-18 llvm-18-dev libclang-common-18-dev
+          sudo apt-get install -y \
+            clang-18 \
+            lld-18 \
+            llvm-18 \
+            llvm-18-dev \
+            libclang-common-18-dev \
+            curl \
+            unzip \
+            make \
+            python3 \
+            pkg-config \
+            binutils
 
-      - name: Download PS5 SDK and libraries
+      - name: Download PS5 SDK
+        shell: bash
         run: |
-          mkdir -p $HOME/ps5-toolchain && cd $HOME/ps5-toolchain
-          curl -sSL -o sdk.zip https://github.com/ps5-payload-dev/sdk/releases/download/v0.43/ps5-payload-sdk.zip
-          curl -sSL -o pacbrew.tar.gz https://github.com/ps5-payload-dev/pacbrew-repo/releases/download/v0.40.2/ps5-payload-dev.tar.gz
-          mkdir -p sdk && unzip -q sdk.zip -d sdk
-          tar xzf pacbrew.tar.gz --strip-components=2 -C sdk/ps5-payload-sdk/
+          set -euo pipefail
 
-      - name: Remove the SDK's own FFmpeg (we link our build)
+          mkdir -p "$HOME/ps5-toolchain"
+          cd "$HOME/ps5-toolchain"
+
+          curl -fL --retry 3 \
+            -o sdk.zip \
+            https://github.com/ps5-payload-dev/sdk/releases/download/v0.43/ps5-payload-sdk.zip
+
+          mkdir -p sdk
+          unzip -q sdk.zip -d sdk
+
+          test -d sdk/ps5-payload-sdk
+
+      - name: Download PacBrew libraries
+        shell: bash
         run: |
-          export PS5_PAYLOAD_SDK=$HOME/ps5-toolchain/sdk/ps5-payload-sdk
-          echo "--- FFmpeg files shipped with the SDK (removing):"
-          find "$PS5_PAYLOAD_SDK" \( -name 'libavcodec*' -o -name 'libavformat*' -o -name 'libavutil*' -o -name 'libswscale*' -o -name 'libswresample*' -o -name 'libavfilter*' -o -name 'libavdevice*' -o -name 'libpostproc*' \) | tee /tmp/ff-removed.txt
-          xargs -r rm -rf < /tmp/ff-removed.txt
-          echo "--- left after removal (must be empty):"
-          find "$PS5_PAYLOAD_SDK" \( -name 'libavcodec*' -o -name 'libavformat*' -o -name 'libavutil*' -o -name 'libswscale*' -o -name 'libswresample*' \) | head
+          set -euo pipefail
 
-      - name: Fetch header-only deps
-        run: sh scripts/deps.sh
+          cd "$HOME/ps5-toolchain"
 
-      - name: Restore FFmpeg
-        uses: actions/cache/restore@v4
+          curl -fL --retry 3 \
+            -o pacbrew.tar.gz \
+            https://github.com/ps5-payload-dev/pacbrew-repo/releases/download/v0.41.1/ps5-payload-dev.tar.gz
+
+          tar xzf pacbrew.tar.gz \
+            --strip-components=2 \
+            -C sdk/ps5-payload-sdk/
+
+      - name: Configure PS5 toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          SDK="$HOME/ps5-toolchain/sdk/ps5-payload-sdk"
+
+          test -f "$SDK/toolchain/prospero.mk"
+
+          echo "PS5_PAYLOAD_SDK=$SDK" >> "$GITHUB_ENV"
+          echo "$SDK/bin" >> "$GITHUB_PATH"
+
+          echo "PS5 SDK configured."
+
+      - name: Download source dependencies
+        run: |
+          set -e
+          sh scripts/deps.sh
+
+      - name: Check required libraries
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for pkg in \
+            sdl2 \
+            SDL2_net \
+            libarchive \
+            libwebp \
+            libcurl \
+            libxml-2.0 \
+            libavformat \
+            libavcodec \
+            libswscale \
+            libswresample \
+            libavutil
+          do
+            prospero-pkg-config --exists "$pkg" || {
+              echo "ERROR: Missing PS5 library: $pkg"
+              exit 1
+            }
+
+            echo "$pkg: OK"
+          done
+
+      - name: Build CineHub
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          make clean
+          make -j2 2>&1 | tee build.log
+
+          test -f cinehub.elf
+
+          echo "CineHub ELF build completed."
+
+      - name: Create homebrew package folder
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          make package
+
+          test -f package/PPSA85301/eboot.bin
+          test -f package/PPSA85301/sce_sys/param.sfo
+          test -f package/PPSA85301/sce_sys/icon0.png
+
+          echo "Homebrew package folder created."
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
         with:
-          path: ffmpeg-prefix
-          key: ffmpeg-ps5-7.1.1-${{ hashFiles('scripts/build-ffmpeg.sh') }}
-          fail-on-cache-miss: true
-
-      - name: Build
-        run: |
-          export PS5_PAYLOAD_SDK=$HOME/ps5-toolchain/sdk/ps5-payload-sdk
-          export PATH="$PS5_PAYLOAD_SDK/bin:$PATH"
-          prospero-pkg-config --exists sdl2 && echo "sdl2 ok"
-          make 2>&1 | tee build.log
-          grep -E "undefined (reference|symbol)" build.log | sort -u | head -100 || true
-          readelf -d cinehub.elf | grep -i kernel
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: cinehub
+          name: CineHub-PS5
+          if-no-files-found: error
           path: |
             cinehub.elf
             movies.json
+            build.log
+            package/PPSA85301/
