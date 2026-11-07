@@ -1,1 +1,0 @@
-https://resolver.example.org/api/movie
