@@ -86,7 +86,6 @@ jobs:
 
           for pkg in \
             sdl2 \
-            SDL2_net \
             libarchive \
             libwebp \
             libcurl \
