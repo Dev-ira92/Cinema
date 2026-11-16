@@ -39,6 +39,7 @@ fun HomeScreen(
             .fillMaxSize()
             .background(CinemaBackground)
     ) {
+
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -54,9 +55,7 @@ fun HomeScreen(
 
             Spacer(Modifier.weight(1f))
 
-            TextButton(
-                onClick = onSettingsClick
-            ) {
+            TextButton(onClick = onSettingsClick) {
                 Text(
                     text = "Settings",
                     color = CinemaPrimary
@@ -77,12 +76,16 @@ fun HomeScreen(
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp),
             placeholder = {
-                Text("Search movies and TV shows...")
+                Text(
+                    "Search movies and TV shows...",
+                    color = CinemaHint
+                )
             },
             leadingIcon = {
                 Icon(
                     Icons.Default.Search,
-                    contentDescription = "Search"
+                    contentDescription = "Search",
+                    tint = CinemaMuted
                 )
             },
             trailingIcon = {
@@ -90,7 +93,8 @@ fun HomeScreen(
                     IconButton(onClick = vm::clearSearch) {
                         Icon(
                             Icons.Default.Close,
-                            contentDescription = "Clear"
+                            contentDescription = "Clear",
+                            tint = CinemaMuted
                         )
                     }
                 }
@@ -101,48 +105,101 @@ fun HomeScreen(
                 focusedBorderColor = CinemaPrimary,
                 unfocusedBorderColor = CinemaCard,
                 focusedTextColor = CinemaText,
-                unfocusedTextColor = CinemaText
+                unfocusedTextColor = CinemaText,
+                cursorColor = CinemaPrimary,
+                focusedContainerColor = CinemaSurface,
+                unfocusedContainerColor = CinemaSurface
             )
         )
 
         when {
-            state.query.length >= 2 -> {
-                if (state.searching) {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        CircularProgressIndicator(
-                            color = CinemaPrimary
-                        )
-                    }
-                } else {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .verticalScroll(rememberScrollState())
-                            .padding(16.dp)
-                    ) {
-                        Text(
-                            "Search results",
-                            color = CinemaText,
-                            style = MaterialTheme.typography.titleLarge
-                        )
+            state.query.trim().length >= 2 -> {
 
-                        Spacer(Modifier.height(16.dp))
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(16.dp)
+                ) {
 
-                        if (state.results.isEmpty()) {
+                    Text(
+                        text = "Search results",
+                        color = CinemaText,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    Spacer(Modifier.height(12.dp))
+
+                    when {
+                        state.searching -> {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 28.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                CircularProgressIndicator(
+                                    color = CinemaPrimary,
+                                    modifier = Modifier.size(24.dp),
+                                    strokeWidth = 2.dp
+                                )
+
+                                Spacer(Modifier.width(12.dp))
+
+                                Text(
+                                    text = "Searching...",
+                                    color = CinemaMuted
+                                )
+                            }
+                        }
+
+                        !state.searchError.isNullOrBlank() -> {
                             Text(
-                                "No results found",
+                                text = state.searchError.orEmpty(),
+                                color = CinemaMuted,
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+
+                            Spacer(Modifier.height(12.dp))
+
+                            TextButton(
+                                onClick = {
+                                    vm.onQueryChanged(state.query)
+                                }
+                            ) {
+                                Text(
+                                    text = "Try again",
+                                    color = CinemaPrimary
+                                )
+                            }
+                        }
+
+                        state.results.isEmpty() -> {
+                            Text(
+                                text = "No matching movies or TV shows were found.",
                                 color = CinemaMuted
                             )
                         }
 
-                        state.results.forEach { item ->
-                            SearchResultRow(
-                                item = item,
-                                onClick = { onMediaClick(item) }
+                        else -> {
+                            Text(
+                                text = "${state.results.size} results",
+                                color = CinemaMuted,
+                                style = MaterialTheme.typography.bodySmall
                             )
+
+                            Spacer(Modifier.height(8.dp))
+
+                            state.results.forEach { item ->
+                                SearchResultRow(
+                                    item = item,
+                                    onClick = {
+                                        onMediaClick(item)
+                                    }
+                                )
+                            }
                         }
                     }
                 }
@@ -155,6 +212,7 @@ fun HomeScreen(
                         .verticalScroll(rememberScrollState())
                         .padding(bottom = 24.dp)
                 ) {
+
                     if (state.loading) {
                         LinearProgressIndicator(
                             modifier = Modifier.fillMaxWidth(),
@@ -162,15 +220,18 @@ fun HomeScreen(
                         )
                     }
 
-                    if (state.error != null) {
+                    if (!state.error.isNullOrBlank()) {
                         Text(
-                            state.error ?: "",
+                            text = state.error.orEmpty(),
                             color = CinemaRed,
                             modifier = Modifier.padding(16.dp)
                         )
 
                         TextButton(onClick = vm::loadHome) {
-                            Text("Try again")
+                            Text(
+                                text = "Try again",
+                                color = CinemaPrimary
+                            )
                         }
                     }
 
@@ -207,7 +268,7 @@ private fun MediaSection(
         modifier = Modifier.padding(top = 22.dp)
     ) {
         Text(
-            title,
+            text = title,
             color = CinemaText,
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold,
@@ -220,10 +281,15 @@ private fun MediaSection(
             contentPadding = PaddingValues(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            items(items) { item ->
+            items(
+                items = items,
+                key = { "${it.normalizedType}:${it.id}" }
+            ) { item ->
                 MediaCard(
                     item = item,
-                    onClick = { onClick(item) }
+                    onClick = {
+                        onClick(item)
+                    }
                 )
             }
         }
@@ -253,7 +319,7 @@ private fun MediaCard(
         Spacer(Modifier.height(8.dp))
 
         Text(
-            item.displayTitle,
+            text = item.displayTitle,
             color = CinemaText,
             maxLines = 2,
             style = MaterialTheme.typography.bodyMedium,
@@ -261,7 +327,7 @@ private fun MediaCard(
         )
 
         Text(
-            "${item.year}  •  ★ ${item.ratingText}",
+            text = "${item.year}  •  ★ ${item.ratingText}",
             color = CinemaMuted,
             style = MaterialTheme.typography.labelSmall
         )
@@ -295,7 +361,7 @@ private fun SearchResultRow(
                 .padding(start = 12.dp)
         ) {
             Text(
-                item.displayTitle,
+                text = item.displayTitle,
                 color = CinemaText,
                 fontWeight = FontWeight.Bold
             )
@@ -303,13 +369,13 @@ private fun SearchResultRow(
             Spacer(Modifier.height(5.dp))
 
             Text(
-                "${item.year} • ${item.normalizedType.uppercase()}",
+                text = "${item.year} • ${item.normalizedType.uppercase()}",
                 color = CinemaMuted,
                 style = MaterialTheme.typography.bodySmall
             )
 
             Text(
-                "★ ${item.ratingText}",
+                text = "★ ${item.ratingText}",
                 color = CinemaGold,
                 style = MaterialTheme.typography.bodySmall
             )
