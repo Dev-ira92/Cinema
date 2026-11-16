@@ -2,8 +2,12 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
-    alias(libs.plugins.kotlin.compose)
 }
+
+val tmdbBearerToken = providers.gradleProperty("TMDB_BEARER_TOKEN")
+    .orElse(providers.environmentVariable("TMDB_BEARER_TOKEN"))
+    .orElse("")
+    .get()
 
 android {
     namespace = "com.cinema"
@@ -13,19 +17,27 @@ android {
         applicationId = "com.cinema"
         minSdk = 24
         targetSdk = 35
+
         versionCode = 1
         versionName = "1.0"
+
+        testInstrumentationRunner =
+            "androidx.test.runner.AndroidJUnitRunner"
 
         buildConfigField(
             "String",
             "TMDB_BEARER_TOKEN",
-            "\"${project.findProperty("TMDB_BEARER_TOKEN") ?: System.getenv("TMDB_BEARER_TOKEN") ?: ""}\""
+            "\"${tmdbBearerToken.replace("\\", "\\\\").replace("\"", "\\\"")}\""
         )
     }
 
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+
+    composeOptions {
+        kotlinCompilerExtensionVersion = "1.5.14"
     }
 
     compileOptions {
@@ -46,46 +58,63 @@ android {
 
 dependencies {
 
-    // Android core
+    // Android Core
     implementation(libs.androidx.core.ktx)
-    implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.lifecycle.runtime)
     implementation(libs.androidx.activity.compose)
 
     // Jetpack Compose
-    implementation(platform(libs.androidx.compose.bom))
-    implementation(libs.androidx.compose.ui)
-    implementation(libs.androidx.compose.ui.graphics)
-    implementation(libs.androidx.compose.ui.tooling.preview)
-    implementation(libs.androidx.compose.material3)
+    implementation(platform(libs.compose.bom))
+    implementation(libs.compose.ui)
+    implementation(libs.compose.ui.graphics)
+    implementation(libs.compose.ui.tooling.preview)
+    implementation(libs.compose.material3)
 
-    // Material icons
+    // Material Icons - Search, Close and other icons
     implementation("androidx.compose.material:material-icons-extended")
 
-    // Compose navigation
-    implementation(libs.androidx.navigation.compose)
+    // ViewModel
+    implementation(libs.androidx.lifecycle.viewmodel)
 
-    // Lifecycle ViewModel
-    implementation(libs.androidx.lifecycle.viewmodel.compose)
-
-    // Image loading
-    implementation(libs.coil.compose)
-
-    // Network
-    implementation(libs.retrofit)
-    implementation(libs.retrofit.converter.gson)
-    implementation(libs.okhttp)
-    implementation(libs.okhttp.logging)
+    // Navigation
+    implementation(libs.navigation.compose)
 
     // JSON
     implementation(libs.gson)
 
-    // Secure local API key storage
-    implementation("androidx.security:security-crypto:1.1.0")
+    // Retrofit
+    implementation(libs.retrofit)
+    implementation(libs.retrofit.gson)
 
-    // Media playback
+    // OkHttp
+    implementation(libs.okhttp)
+    implementation(libs.okhttp.logging)
+
+    // Coroutines
+    implementation(libs.coroutines.android)
+
+    // Encrypted preferences
+    implementation(libs.security.crypto)
+
+    // Media3 Player
     implementation(libs.media3.exoplayer)
+    implementation(libs.media3.exoplayer.hls)
     implementation(libs.media3.ui)
+    implementation("androidx.media3:media3-common:1.3.1")
+
+    // Coil
+    implementation(libs.coil.compose)
 
     // Debug tools
-    debugImplementation(libs.androidx.compose.ui.tooling)
+    debugImplementation("androidx.compose.ui:ui-tooling")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
+
+    // Unit tests
+    testImplementation("junit:junit:4.13.2")
+
+    // Android tests
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
+    androidTestImplementation(platform(libs.compose.bom))
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
 }
