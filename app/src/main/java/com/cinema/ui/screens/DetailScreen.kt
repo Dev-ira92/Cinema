@@ -23,6 +23,12 @@ import com.cinema.data.model.TvEpisode
 import com.cinema.ui.theme.*
 import com.cinema.viewmodel.DetailViewModel
 
+private enum class SubtitleFilter {
+    ALL,
+    PERSIAN,
+    ENGLISH
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DetailScreen(
@@ -50,6 +56,10 @@ fun DetailScreen(
         mutableStateOf(false)
     }
 
+    var subtitleFilter by remember(item.id) {
+        mutableStateOf(SubtitleFilter.ALL)
+    }
+
     LaunchedEffect(item.id, item.normalizedType) {
         vm.load(item)
     }
@@ -66,6 +76,33 @@ fun DetailScreen(
 
     val episodes = state.season?.episodes.orEmpty()
 
+    val visibleSubtitles = remember(
+        state.subtitles,
+        subtitleFilter
+    ) {
+        val filtered = state.subtitles.filter { subtitle ->
+            when (subtitleFilter) {
+                SubtitleFilter.ALL -> true
+                SubtitleFilter.PERSIAN ->
+                    isPersianSubtitle(subtitle.language)
+                SubtitleFilter.ENGLISH ->
+                    isEnglishSubtitle(subtitle.language)
+            }
+        }
+
+        if (subtitleFilter == SubtitleFilter.ALL) {
+            filtered.sortedBy {
+                when {
+                    isPersianSubtitle(it.language) -> 0
+                    isEnglishSubtitle(it.language) -> 1
+                    else -> 2
+                }
+            }
+        } else {
+            filtered
+        }
+    }
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -74,6 +111,7 @@ fun DetailScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp),
         contentPadding = PaddingValues(bottom = 28.dp)
     ) {
+
         item {
             Row(
                 modifier = Modifier
@@ -163,6 +201,7 @@ fun DetailScreen(
         }
 
         if (item.normalizedType == "movie") {
+
             item {
                 val movie = state.movie
 
@@ -188,7 +227,9 @@ fun DetailScreen(
                     }
                 }
             }
+
         } else {
+
             item {
                 Text(
                     text = "Season",
@@ -236,6 +277,7 @@ fun DetailScreen(
             }
 
             if (episodes.isNotEmpty()) {
+
                 item {
                     Text(
                         text = "Episodes",
@@ -248,6 +290,7 @@ fun DetailScreen(
                     items = episodes,
                     key = { it.id }
                 ) { episode ->
+
                     EpisodeRow(
                         episode = episode,
                         selected = state.selectedEpisode?.id == episode.id,
@@ -277,7 +320,9 @@ fun DetailScreen(
 
             OutlinedTextField(
                 value = videoUrl,
-                onValueChange = { videoUrl = it.trim() },
+                onValueChange = {
+                    videoUrl = it.trim()
+                },
                 modifier = Modifier.fillMaxWidth(),
                 label = {
                     Text("Video URL")
@@ -320,6 +365,12 @@ fun DetailScreen(
                 style = MaterialTheme.typography.titleMedium
             )
 
+            Text(
+                text = "Search for Persian and English subtitles.",
+                color = CinemaMuted,
+                style = MaterialTheme.typography.bodySmall
+            )
+
             OutlinedTextField(
                 value = customSubtitleTitle,
                 onValueChange = {
@@ -346,6 +397,8 @@ fun DetailScreen(
             Button(
                 onClick = {
                     selectedSubtitle = null
+                    subtitleFilter = SubtitleFilter.ALL
+
                     vm.searchSubtitles(
                         context = context,
                         customTitle = customSubtitleTitle
@@ -363,8 +416,85 @@ fun DetailScreen(
                     Text("Search subtitles")
                 }
             }
+        }
 
-            if (!state.subtitleError.isNullOrBlank()) {
+        if (state.subtitles.isNotEmpty()) {
+
+            item {
+                Text(
+                    text = "${state.subtitles.size} subtitle results",
+                    color = CinemaText,
+                    style = MaterialTheme.typography.titleSmall
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterChip(
+                        selected = subtitleFilter == SubtitleFilter.ALL,
+                        onClick = {
+                            subtitleFilter = SubtitleFilter.ALL
+                        },
+                        label = {
+                            Text("All")
+                        }
+                    )
+
+                    FilterChip(
+                        selected = subtitleFilter == SubtitleFilter.PERSIAN,
+                        onClick = {
+                            subtitleFilter = SubtitleFilter.PERSIAN
+                        },
+                        label = {
+                            Text("Persian")
+                        }
+                    )
+
+                    FilterChip(
+                        selected = subtitleFilter == SubtitleFilter.ENGLISH,
+                        onClick = {
+                            subtitleFilter = SubtitleFilter.ENGLISH
+                        },
+                        label = {
+                            Text("English")
+                        }
+                    )
+                }
+
+                Text(
+                    text = "${visibleSubtitles.size} results shown",
+                    color = CinemaMuted,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+
+            if (visibleSubtitles.isEmpty()) {
+                item {
+                    Text(
+                        text = "No results for this language.",
+                        color = CinemaMuted
+                    )
+                }
+            }
+
+            items(
+                items = visibleSubtitles,
+                key = { it.url }
+            ) { subtitle ->
+
+                SubtitleRow(
+                    subtitle = subtitle,
+                    selected = selectedSubtitle?.url == subtitle.url,
+                    onClick = {
+                        selectedSubtitle = subtitle
+                    }
+                )
+            }
+        }
+
+        if (!state.subtitleError.isNullOrBlank()) {
+            item {
                 Text(
                     text = state.subtitleError.orEmpty(),
                     color = CinemaRed,
@@ -374,6 +504,7 @@ fun DetailScreen(
         }
 
         if (selectedSubtitle != null) {
+
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -391,7 +522,9 @@ fun DetailScreen(
 
                         Text(
                             text = selectedSubtitle?.releaseName
-                                ?.ifBlank { selectedSubtitle?.fullName.orEmpty() }
+                                ?.ifBlank {
+                                    selectedSubtitle?.fullName.orEmpty()
+                                }
                                 .orEmpty(),
                             color = CinemaMuted
                         )
@@ -427,19 +560,6 @@ fun DetailScreen(
                     }
                 }
             }
-        }
-
-        items(
-            items = state.subtitles,
-            key = { it.url }
-        ) { subtitle ->
-            SubtitleRow(
-                subtitle = subtitle,
-                selected = selectedSubtitle?.url == subtitle.url,
-                onClick = {
-                    selectedSubtitle = subtitle
-                }
-            )
         }
     }
 }
@@ -534,6 +654,24 @@ private fun SubtitleRow(
             )
         }
     }
+}
+
+private fun isPersianSubtitle(language: String): Boolean {
+    val value = language.trim().lowercase()
+
+    return value == "fa" ||
+        value == "fas" ||
+        value == "per" ||
+        value.contains("persian") ||
+        value.contains("farsi")
+}
+
+private fun isEnglishSubtitle(language: String): Boolean {
+    val value = language.trim().lowercase()
+
+    return value == "en" ||
+        value == "eng" ||
+        value.contains("english")
 }
 
 private fun isHttpUrl(value: String): Boolean {
