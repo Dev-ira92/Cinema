@@ -1,3 +1,4 @@
+
 package com.cinema.viewmodel
 
 import android.content.Context
@@ -54,13 +55,16 @@ class DetailViewModel : ViewModel() {
 
             try {
                 if (item.normalizedType == "movie") {
+
                     val movie = TmdbApi.service.movieDetail(item.id)
 
                     _state.value = DetailUiState(
                         loading = false,
                         movie = movie
                     )
+
                 } else {
+
                     val tv = TmdbApi.service.tvDetail(item.id)
 
                     val firstSeason = tv.seasons
@@ -108,6 +112,7 @@ class DetailViewModel : ViewModel() {
                 selectedEpisode = null,
                 subtitles = emptyList(),
                 subtitleError = null,
+                subtitleLoading = false,
                 error = null
             )
 
@@ -181,6 +186,7 @@ class DetailViewModel : ViewModel() {
         subtitleJob?.cancel()
 
         subtitleJob = viewModelScope.launch {
+
             _state.value = _state.value.copy(
                 subtitleLoading = true,
                 subtitles = emptyList(),
@@ -188,9 +194,6 @@ class DetailViewModel : ViewModel() {
             )
 
             try {
-                val title = customTitle.trim().ifBlank {
-                    item.displayTitle
-                }
 
                 val episode = current.selectedEpisode
 
@@ -208,29 +211,51 @@ class DetailViewModel : ViewModel() {
                         ?: item.year.toIntOrNull()
                 }
 
-                val response = SubtitleApi.service.search(
-                    key = apiKey,
-                    imdbId = imdbId,
-                    tmdbId = item.id,
-                    filmName = title,
-                    year = year,
-                    languages = "FA,EN",
-                    type = item.normalizedType,
-                    season = episode?.seasonNumber,
-                    episode = episode?.episodeNumber,
-                    perPage = 30,
-                    unpack = 1
-                )
+                val primaryTitle = customTitle.trim()
+                    .ifBlank { item.displayTitle }
 
-                val results = response.subtitles
-                    .distinctBy { it.url }
-                    .filter { it.url.isNotBlank() }
+                val fallbackTitle = listOf(
+                    item.displayTitle,
+                    item.originalDisplayTitle
+                ).firstOrNull {
+                    it.isNotBlank() &&
+                        !it.equals(primaryTitle, ignoreCase = true)
+                }
+
+                suspend fun requestSubtitles(
+                    title: String
+                ): List<SubdlItem> {
+
+                    val response = SubtitleApi.service.search(
+                        key = apiKey,
+                        imdbId = imdbId,
+                        tmdbId = item.id,
+                        filmName = title,
+                        year = year,
+                        languages = "FA,EN",
+                        type = item.normalizedType,
+                        season = episode?.seasonNumber,
+                        episode = episode?.episodeNumber,
+                        perPage = 30,
+                        unpack = 1
+                    )
+
+                    return response.subtitles
+                        .filter { it.url.isNotBlank() }
+                        .distinctBy { it.url }
+                }
+
+                var results = requestSubtitles(primaryTitle)
+
+                if (results.isEmpty() && fallbackTitle != null) {
+                    results = requestSubtitles(fallbackTitle)
+                }
 
                 _state.value = _state.value.copy(
                     subtitleLoading = false,
                     subtitles = results,
                     subtitleError = if (results.isEmpty()) {
-                        "No subtitles were found. Try another title or release name."
+                        "No subtitles found. Try another title or release name."
                     } else {
                         null
                     }
@@ -240,11 +265,22 @@ class DetailViewModel : ViewModel() {
                 throw e
 
             } catch (e: retrofit2.HttpException) {
+
                 val message = when (e.code()) {
-                    401, 403 -> "SubDL rejected the API key. Check your key and account access."
-                    404 -> "The subtitle service endpoint was not found."
-                    429 -> "Too many subtitle searches. Please wait and try again."
-                    else -> "Subtitle search failed: HTTP ${e.code()}."
+                    401, 403 ->
+                        "SubDL rejected the API key. Check your key and account access."
+
+                    404 ->
+                        "The subtitle service endpoint was not found."
+
+                    429 ->
+                        "Too many subtitle searches. Please wait and try again."
+
+                    500, 502, 503, 504 ->
+                        "SubDL is temporarily unavailable. Try again later."
+
+                    else ->
+                        "Subtitle search failed: HTTP ${e.code()}."
                 }
 
                 _state.value = _state.value.copy(
@@ -254,6 +290,7 @@ class DetailViewModel : ViewModel() {
                 )
 
             } catch (e: Exception) {
+
                 _state.value = _state.value.copy(
                     subtitleLoading = false,
                     subtitles = emptyList(),
