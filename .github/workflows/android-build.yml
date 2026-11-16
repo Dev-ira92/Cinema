@@ -59,6 +59,8 @@ jobs:
         run: gradle :app:dependencies --stacktrace
 
       - name: Build Debug APK
+        env:
+          TMDB_BEARER_TOKEN: ${{ secrets.TMDB_BEARER_TOKEN }}
         run: gradle :app:assembleDebug --stacktrace
 
       - name: Upload APK
