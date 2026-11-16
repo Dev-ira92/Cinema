@@ -1,4 +1,3 @@
-
 package com.cinema.player
 
 import android.net.Uri
@@ -14,18 +13,27 @@ object SubtitlePlayer {
     ): MediaItem {
 
         require(videoUrl.isNotBlank()) {
-            "آدرس ویدئو خالی است"
+            "Video URL is empty"
+        }
+
+        val videoUri = Uri.parse(videoUrl.trim())
+
+        require(
+            videoUri.scheme == "http" ||
+            videoUri.scheme == "https"
+        ) {
+            "Unsupported video URL"
         }
 
         val builder = MediaItem.Builder()
-            .setUri(Uri.parse(videoUrl))
+            .setUri(videoUri)
 
         if (!subtitleUrl.isNullOrBlank()) {
 
+            val subtitleUri = Uri.parse(subtitleUrl.trim())
+
             val subtitleConfiguration =
-                MediaItem.SubtitleConfiguration.Builder(
-                    Uri.parse(subtitleUrl)
-                )
+                MediaItem.SubtitleConfiguration.Builder(subtitleUri)
                     .setMimeType(MimeTypes.APPLICATION_SUBRIP)
                     .setLanguage("fa")
                     .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
