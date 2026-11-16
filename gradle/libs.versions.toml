@@ -1,52 +1,101 @@
-[versions]
-agp = "8.5.2"
-kotlin = "1.9.24"
-coreKtx = "1.13.1"
-lifecycle = "2.8.3"
-activityCompose = "1.9.0"
-composeBom = "2024.09.03"
-navigation = "2.8.4"
-retrofit = "2.11.0"
-okhttp = "4.12.0"
-gson = "2.11.0"
-coil = "2.7.0"
-media3 = "1.3.1"
-coroutines = "1.8.1"
-securityCrypto = "1.1.0-alpha06"
 
-[libraries]
-androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
-androidx-lifecycle-runtime = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "lifecycle" }
-androidx-lifecycle-viewmodel = { group = "androidx.lifecycle", name = "lifecycle-viewmodel-compose", version.ref = "lifecycle" }
-androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
+plugins {
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.android)
+}
 
-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
-compose-ui = { group = "androidx.compose.ui", name = "ui" }
-compose-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics" }
-compose-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
-compose-material3 = { group = "androidx.compose.material3", name = "material3" }
-compose-icons-core = { group = "androidx.compose.material", name = "material-icons-core" }
-compose-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended" }
+android {
+    namespace = "com.cinema"
+    compileSdk = 35
 
-navigation-compose = { group = "androidx.navigation", name = "navigation-compose", version.ref = "navigation" }
+    defaultConfig {
+        applicationId = "com.cinema"
+        minSdk = 24
+        targetSdk = 35
 
-retrofit = { group = "com.squareup.retrofit2", name = "retrofit", version.ref = "retrofit" }
-retrofit-gson = { group = "com.squareup.retrofit2", name = "converter-gson", version.ref = "retrofit" }
+        versionCode = 1
+        versionName = "1.0"
 
-okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
-okhttp-logging = { group = "com.squareup.okhttp3", name = "logging-interceptor", version.ref = "okhttp" }
+        testInstrumentationRunner =
+            "androidx.test.runner.AndroidJUnitRunner"
+    }
 
-gson = { group = "com.google.code.gson", name = "gson", version.ref = "gson" }
-coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
+    buildFeatures {
+        compose = true
+    }
 
-media3-exoplayer = { group = "androidx.media3", name = "media3-exoplayer", version.ref = "media3" }
-media3-exoplayer-hls = { group = "androidx.media3", name = "media3-exoplayer-hls", version.ref = "media3" }
-media3-ui = { group = "androidx.media3", name = "media3-ui", version.ref = "media3" }
+    composeOptions {
+        kotlinCompilerExtensionVersion = "1.5.14"
+    }
 
-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
 
-security-crypto = { group = "androidx.security", name = "security-crypto", version.ref = "securityCrypto" }
+    kotlinOptions {
+        jvmTarget = "17"
+    }
 
-[plugins]
-android-application = { id = "com.android.application", version.ref = "agp" }
-kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+    packaging {
+        resources {
+            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        }
+    }
+}
+
+dependencies {
+
+    // Android
+    implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.lifecycle.runtime)
+    implementation(libs.androidx.lifecycle.viewmodel)
+    implementation(libs.androidx.activity.compose)
+
+    // Jetpack Compose
+    implementation(platform(libs.compose.bom))
+    implementation(libs.compose.ui)
+    implementation(libs.compose.ui.graphics)
+    implementation(libs.compose.ui.tooling.preview)
+    implementation(libs.compose.material3)
+    implementation(libs.compose.icons.core)
+    implementation(libs.compose.icons.extended)
+
+    // Navigation
+    implementation(libs.navigation.compose)
+
+    // Network
+    implementation(libs.retrofit)
+    implementation(libs.retrofit.gson)
+    implementation(libs.okhttp)
+    implementation(libs.okhttp.logging)
+
+    // JSON
+    implementation(libs.gson)
+
+    // Images
+    implementation(libs.coil.compose)
+
+    // Coroutines
+    implementation(libs.coroutines.android)
+
+    // Secure storage
+    implementation(libs.security.crypto)
+
+    // Video Player - Media3
+    implementation(libs.media3.exoplayer)
+    implementation(libs.media3.exoplayer.hls)
+    implementation(libs.media3.ui)
+
+    // Debug
+    debugImplementation("androidx.compose.ui:ui-tooling")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
+
+    // Tests
+    testImplementation("junit:junit:4.13.2")
+
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
+    androidTestImplementation(platform(libs.compose.bom))
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+}
