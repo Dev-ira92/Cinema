@@ -1,18 +1,26 @@
 
 package com.cinema.ui.screens
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.cinema.data.model.MediaItem
 import com.cinema.data.model.SubdlItem
+import com.cinema.data.model.TvEpisode
+import com.cinema.ui.theme.*
 import com.cinema.viewmodel.DetailViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -23,7 +31,6 @@ fun DetailScreen(
     onBack: () -> Unit = {},
     vm: DetailViewModel = viewModel()
 ) {
-
     val context = LocalContext.current
     val state by vm.state.collectAsState()
 
@@ -39,322 +46,497 @@ fun DetailScreen(
         mutableStateOf<SubdlItem?>(null)
     }
 
-    LaunchedEffect(item.id, item.mediaType) {
+    var seasonMenuExpanded by remember {
+        mutableStateOf(false)
+    }
+
+    LaunchedEffect(item.id, item.normalizedType) {
         vm.load(item)
     }
 
-    val displayTitle =
-        item.title.ifBlank { item.name }
+    val displayTitle = item.displayTitle
 
     val detailOverview =
         state.movie?.overview
             ?: state.tv?.overview
             ?: item.overview
 
-    Column(
+    val seasons = state.tv?.seasons.orEmpty()
+        .filter { it.seasonNumber >= 0 }
+
+    val episodes = state.season?.episodes.orEmpty()
+
+    LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp)
+            .background(CinemaBackground)
+            .padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = PaddingValues(bottom = 28.dp)
     ) {
-
-        // Header
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-
-            TextButton(onClick = onBack) {
-                Text("بازگشت")
-            }
-
-            Text(
-                text = "جزئیات",
-                style = MaterialTheme.typography.titleLarge
-            )
-        }
-
-        LazyColumn(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-
-            // Poster
-            item {
-
-                AsyncImage(
-                    model = item.posterPath?.let {
-                        "https://image.tmdb.org/t/p/w500$it"
-                    },
-                    contentDescription = displayTitle,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(280.dp)
-                )
-            }
-
-            // Title
-            item {
+        item {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TextButton(onClick = onBack) {
+                    Text("Back")
+                }
 
                 Text(
-                    text = displayTitle,
-                    style = MaterialTheme.typography.headlineSmall
-                )
-
-                Text(
-                    text = if (item.mediaType == "tv") {
-                        "سریال"
-                    } else {
-                        "فیلم"
-                    },
+                    text = "TITLE DETAILS",
+                    color = CinemaMuted,
                     style = MaterialTheme.typography.labelLarge
                 )
             }
+        }
 
-            // Overview
+        item {
+            AsyncImage(
+                model = item.backdropUrl ?: item.posterUrl,
+                contentDescription = displayTitle,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(210.dp)
+                    .clip(RoundedCornerShape(16.dp)),
+                contentScale = ContentScale.Crop
+            )
+        }
+
+        item {
+            Text(
+                text = displayTitle,
+                color = CinemaText,
+                style = MaterialTheme.typography.headlineSmall
+            )
+
+            Text(
+                text = buildString {
+                    append(item.normalizedType.uppercase())
+                    if (item.year.isNotBlank()) {
+                        append("  •  ")
+                        append(item.year)
+                    }
+                    append("  •  ★ ")
+                    append(item.ratingText)
+                },
+                color = CinemaMuted,
+                style = MaterialTheme.typography.bodyMedium
+            )
+        }
+
+        if (state.loading) {
             item {
-
-                Text(
-                    text = detailOverview,
-                    style = MaterialTheme.typography.bodyMedium
+                LinearProgressIndicator(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = CinemaPrimary
                 )
             }
+        }
 
-            // Loading
-            if (state.loading) {
-
-                item {
-                    LinearProgressIndicator(
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
+        if (!state.error.isNullOrBlank()) {
+            item {
+                Text(
+                    text = state.error.orEmpty(),
+                    color = CinemaRed
+                )
             }
+        }
 
-            // Detail error
-            if (!state.error.isNullOrBlank()) {
+        item {
+            Text(
+                text = "Overview",
+                color = CinemaText,
+                style = MaterialTheme.typography.titleMedium
+            )
 
-                item {
+            Text(
+                text = detailOverview.ifBlank {
+                    "No overview is available."
+                },
+                color = CinemaMuted,
+                style = MaterialTheme.typography.bodyMedium
+            )
+        }
+
+        if (item.normalizedType == "movie") {
+            item {
+                val movie = state.movie
+
+                if (movie != null) {
                     Text(
-                        text = state.error.orEmpty(),
-                        color = MaterialTheme.colorScheme.error
+                        text = "Movie information",
+                        color = CinemaText,
+                        style = MaterialTheme.typography.titleMedium
                     )
-                }
-            }
 
-            // Video URL
-            item {
-
-                HorizontalDivider()
-
-                Text(
-                    text = "آدرس ویدئو",
-                    style = MaterialTheme.typography.titleMedium
-                )
-
-                OutlinedTextField(
-                    value = videoUrl,
-                    onValueChange = {
-                        videoUrl = it
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = {
-                        Text("Video URL")
-                    },
-                    placeholder = {
-                        Text("https://example.com/video.mp4")
-                    },
-                    singleLine = true
-                )
-
-                Button(
-                    onClick = {
-                        if (
-                            videoUrl.startsWith("https://") ||
-                            videoUrl.startsWith("http://")
-                        ) {
-                            onPlay(
-                                videoUrl,
-                                displayTitle,
-                                selectedSubtitle?.url
-                            )
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = videoUrl.startsWith("https://") ||
-                        videoUrl.startsWith("http://")
-                ) {
-                    Text("پخش فیلم")
-                }
-            }
-
-            // Subtitle search
-            item {
-
-                HorizontalDivider()
-
-                Text(
-                    text = "جست‌وجوی زیرنویس",
-                    style = MaterialTheme.typography.titleMedium
-                )
-
-                OutlinedTextField(
-                    value = customSubtitleTitle,
-                    onValueChange = {
-                        customSubtitleTitle = it
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = {
-                        Text("نام فیلم یا نسخه انتشار")
-                    },
-                    placeholder = {
-                        Text(displayTitle)
-                    },
-                    singleLine = true
-                )
-
-                Button(
-                    onClick = {
-                        selectedSubtitle = null
-
-                        vm.searchSubtitles(
-                            context = context,
-                            customTitle = customSubtitleTitle
+                    if (movie.genreText.isNotBlank()) {
+                        Text(
+                            text = movie.genreText,
+                            color = CinemaMuted
                         )
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = !state.subtitleLoading
-                ) {
+                    }
 
-                    if (state.subtitleLoading) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(18.dp),
-                            strokeWidth = 2.dp
+                    if (movie.runtimeText.isNotBlank()) {
+                        Text(
+                            text = "Runtime: ${movie.runtimeText}",
+                            color = CinemaMuted
                         )
-                    } else {
-                        Text("جست‌وجوی زیرنویس")
                     }
                 }
-
-                if (!state.subtitleError.isNullOrBlank()) {
-                    Text(
-                        text = state.subtitleError.orEmpty(),
-                        color = MaterialTheme.colorScheme.error
-                    )
-                }
             }
+        } else {
+            item {
+                Text(
+                    text = "Season",
+                    color = CinemaText,
+                    style = MaterialTheme.typography.titleMedium
+                )
 
-            // Selected subtitle
-            if (selectedSubtitle != null) {
-
-                item {
-
-                    Card(
+                Box {
+                    OutlinedButton(
+                        onClick = {
+                            seasonMenuExpanded = true
+                        },
                         modifier = Modifier.fillMaxWidth()
                     ) {
+                        Text(
+                            text = "Season ${state.selectedSeason}",
+                            color = CinemaText
+                        )
+                    }
 
-                        Column(
-                            modifier = Modifier.padding(12.dp)
-                        ) {
-
-                            Text("زیرنویس انتخاب‌شده")
-
-                            Text(
-                                selectedSubtitle?.releaseName.orEmpty()
-                            )
-
-                            Text(
-                                selectedSubtitle?.language.orEmpty()
-                            )
-
-                            TextButton(
+                    DropdownMenu(
+                        expanded = seasonMenuExpanded,
+                        onDismissRequest = {
+                            seasonMenuExpanded = false
+                        }
+                    ) {
+                        seasons.forEach { season ->
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        season.name.ifBlank {
+                                            "Season ${season.seasonNumber}"
+                                        }
+                                    )
+                                },
                                 onClick = {
+                                    seasonMenuExpanded = false
                                     selectedSubtitle = null
+                                    vm.selectSeason(season.seasonNumber)
                                 }
-                            ) {
-                                Text("لغو انتخاب")
-                            }
+                            )
                         }
                     }
                 }
             }
 
-            // Subtitle results
-            items(
-                items = state.subtitles,
-                key = { subtitle ->
-                    subtitle.url
+            if (episodes.isNotEmpty()) {
+                item {
+                    Text(
+                        text = "Episodes",
+                        color = CinemaText,
+                        style = MaterialTheme.typography.titleMedium
+                    )
                 }
-            ) { subtitle ->
 
+                items(
+                    items = episodes,
+                    key = { it.id }
+                ) { episode ->
+                    EpisodeRow(
+                        episode = episode,
+                        selected = state.selectedEpisode?.id == episode.id,
+                        onClick = {
+                            selectedSubtitle = null
+                            vm.selectEpisode(episode)
+                        }
+                    )
+                }
+            }
+        }
+
+        item {
+            HorizontalDivider(color = CinemaBorder)
+
+            Text(
+                text = "Authorized video URL",
+                color = CinemaText,
+                style = MaterialTheme.typography.titleMedium
+            )
+
+            Text(
+                text = "Enter a video URL that you are authorized to access. Cinema does not scrape or bypass streaming services.",
+                color = CinemaMuted,
+                style = MaterialTheme.typography.bodySmall
+            )
+
+            OutlinedTextField(
+                value = videoUrl,
+                onValueChange = { videoUrl = it.trim() },
+                modifier = Modifier.fillMaxWidth(),
+                label = {
+                    Text("Video URL")
+                },
+                placeholder = {
+                    Text("https://...")
+                },
+                singleLine = true,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = CinemaText,
+                    unfocusedTextColor = CinemaText,
+                    focusedBorderColor = CinemaPrimary,
+                    unfocusedBorderColor = CinemaBorder,
+                    focusedContainerColor = CinemaSurface,
+                    unfocusedContainerColor = CinemaSurface
+                )
+            )
+
+            Button(
+                onClick = {
+                    onPlay(
+                        videoUrl,
+                        displayTitle,
+                        selectedSubtitle?.url
+                    )
+                },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = isHttpUrl(videoUrl)
+            ) {
+                Text("Play video")
+            }
+        }
+
+        item {
+            HorizontalDivider(color = CinemaBorder)
+
+            Text(
+                text = "Subtitles",
+                color = CinemaText,
+                style = MaterialTheme.typography.titleMedium
+            )
+
+            OutlinedTextField(
+                value = customSubtitleTitle,
+                onValueChange = {
+                    customSubtitleTitle = it
+                },
+                modifier = Modifier.fillMaxWidth(),
+                label = {
+                    Text("Title or release name")
+                },
+                placeholder = {
+                    Text(displayTitle)
+                },
+                singleLine = true,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = CinemaText,
+                    unfocusedTextColor = CinemaText,
+                    focusedBorderColor = CinemaPrimary,
+                    unfocusedBorderColor = CinemaBorder,
+                    focusedContainerColor = CinemaSurface,
+                    unfocusedContainerColor = CinemaSurface
+                )
+            )
+
+            Button(
+                onClick = {
+                    selectedSubtitle = null
+                    vm.searchSubtitles(
+                        context = context,
+                        customTitle = customSubtitleTitle
+                    )
+                },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !state.subtitleLoading
+            ) {
+                if (state.subtitleLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    Text("Search subtitles")
+                }
+            }
+
+            if (!state.subtitleError.isNullOrBlank()) {
+                Text(
+                    text = state.subtitleError.orEmpty(),
+                    color = CinemaRed,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+        }
+
+        if (selectedSubtitle != null) {
+            item {
                 Card(
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = CinemaCard
+                    )
                 ) {
-
                     Column(
                         modifier = Modifier.padding(12.dp)
                     ) {
-
                         Text(
-                            text = subtitle.releaseName.ifBlank {
-                                subtitle.fullName
-                            },
-                            style = MaterialTheme.typography.titleSmall
+                            text = "Selected subtitle",
+                            color = CinemaText
                         )
 
                         Text(
-                            text = "زبان: ${subtitle.language}"
+                            text = selectedSubtitle?.releaseName
+                                ?.ifBlank { selectedSubtitle?.fullName.orEmpty() }
+                                .orEmpty(),
+                            color = CinemaMuted
                         )
 
                         Text(
-                            text = "فایل: ${subtitle.fileName}"
+                            text = selectedSubtitle?.language.orEmpty(),
+                            color = CinemaMuted
                         )
+
+                        TextButton(
+                            onClick = {
+                                selectedSubtitle = null
+                            }
+                        ) {
+                            Text("Clear selection")
+                        }
 
                         Button(
                             onClick = {
-                                selectedSubtitle = subtitle
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-
-                            Text(
-                                if (selectedSubtitle?.url == subtitle.url) {
-                                    "انتخاب شده"
-                                } else {
-                                    "انتخاب زیرنویس"
+                                if (isHttpUrl(videoUrl)) {
+                                    onPlay(
+                                        videoUrl,
+                                        displayTitle,
+                                        selectedSubtitle?.url
+                                    )
                                 }
-                            )
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = isHttpUrl(videoUrl)
+                        ) {
+                            Text("Play with subtitle")
                         }
-                    }
-                }
-            }
-
-            // Play with selected subtitle
-            if (selectedSubtitle != null) {
-
-                item {
-
-                    Button(
-                        onClick = {
-
-                            if (
-                                videoUrl.startsWith("https://") ||
-                                videoUrl.startsWith("http://")
-                            ) {
-
-                                onPlay(
-                                    videoUrl,
-                                    displayTitle,
-                                    selectedSubtitle?.url
-                                )
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = videoUrl.startsWith("https://") ||
-                            videoUrl.startsWith("http://")
-                    ) {
-                        Text("پخش همراه زیرنویس")
                     }
                 }
             }
         }
+
+        items(
+            items = state.subtitles,
+            key = { it.url }
+        ) { subtitle ->
+            SubtitleRow(
+                subtitle = subtitle,
+                selected = selectedSubtitle?.url == subtitle.url,
+                onClick = {
+                    selectedSubtitle = subtitle
+                }
+            )
+        }
     }
+}
+
+@Composable
+private fun EpisodeRow(
+    episode: TvEpisode,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        colors = CardDefaults.cardColors(
+            containerColor = if (selected) {
+                CinemaPrimary.copy(alpha = 0.18f)
+            } else {
+                CinemaCard
+            }
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp)
+        ) {
+            Text(
+                text = "${episode.code}  •  ${episode.name}",
+                color = CinemaText,
+                style = MaterialTheme.typography.titleSmall
+            )
+
+            if (episode.overview.isNotBlank()) {
+                Spacer(Modifier.height(4.dp))
+
+                Text(
+                    text = episode.overview,
+                    color = CinemaMuted,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SubtitleRow(
+    subtitle: SubdlItem,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        colors = CardDefaults.cardColors(
+            containerColor = if (selected) {
+                CinemaPrimary.copy(alpha = 0.18f)
+            } else {
+                CinemaCard
+            }
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp)
+        ) {
+            Text(
+                text = subtitle.releaseName.ifBlank {
+                    subtitle.fullName.ifBlank {
+                        subtitle.fileName
+                    }
+                },
+                color = CinemaText,
+                style = MaterialTheme.typography.titleSmall
+            )
+
+            Text(
+                text = "Language: ${subtitle.language}",
+                color = CinemaMuted
+            )
+
+            if (subtitle.fileName.isNotBlank()) {
+                Text(
+                    text = "File: ${subtitle.fileName}",
+                    color = CinemaMuted,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+
+            Text(
+                text = if (selected) "Selected" else "Select subtitle",
+                color = CinemaPrimary
+            )
+        }
+    }
+}
+
+private fun isHttpUrl(value: String): Boolean {
+    return value.startsWith("https://", ignoreCase = true) ||
+        value.startsWith("http://", ignoreCase = true)
 }
