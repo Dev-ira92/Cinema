@@ -1,5 +1,5 @@
 
-name: Android Build
+name: Cinema Android Build
 
 on:
   push:
@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   build:
-    name: Build Cinema APK
+    name: Validate and Build Cinema
     runs-on: ubuntu-latest
 
     steps:
@@ -28,19 +28,23 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 17
-          cache: gradle
+          java-version: '17'
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
-        with:
-          packages: ''
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
+      - name: Install Android SDK packages
+        run: |
+          sdkmanager --install "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+          yes | sdkmanager --licenses
+
+      - name: Validate Gradle Version Catalog
+        run: |
+          gradle dependencies --stacktrace --info
 
       - name: Build Debug APK
-        run: gradle :app:assembleDebug --stacktrace
+        run: |
+          gradle :app:assembleDebug --stacktrace
 
       - name: Upload APK
         if: success()
