@@ -43,24 +43,35 @@ fun PlayerScreen(
         mutableStateOf("")
     }
 
-    val player = remember(context) {
+    // Create ExoPlayer
+
+    val exoPlayer = remember(context) {
         ExoPlayer.Builder(context).build()
     }
 
-    DisposableEffect(player) {
+    // Release player when screen is destroyed
+
+    DisposableEffect(exoPlayer) {
 
         onDispose {
-            player.release()
+            exoPlayer.release()
         }
     }
 
-    LaunchedEffect(videoUrl, subtitleUrl, player) {
+    // Load video and optional subtitle
+
+    LaunchedEffect(
+        videoUrl,
+        subtitleUrl,
+        exoPlayer
+    ) {
 
         playerError = ""
         subtitleMessage = ""
+        loadingSubtitle = false
 
-        player.stop()
-        player.clearMediaItems()
+        exoPlayer.stop()
+        exoPlayer.clearMediaItems()
 
         if (videoUrl.isBlank()) {
 
@@ -78,9 +89,11 @@ fun PlayerScreen(
             return@LaunchedEffect
         }
 
-        var downloadedSubtitleUrl: String? = null
-
         try {
+
+            var downloadedSubtitleUrl: String? = null
+
+            // Download subtitle if selected
 
             if (subtitleUrl.isNotBlank()) {
 
@@ -97,7 +110,8 @@ fun PlayerScreen(
                     downloadedSubtitleUrl =
                         Uri.fromFile(subtitleFile).toString()
 
-                    subtitleMessage = "زیرنویس با موفقیت دریافت شد."
+                    subtitleMessage =
+                        "زیرنویس با موفقیت دریافت شد."
 
                 } catch (e: CancellationException) {
 
@@ -111,6 +125,8 @@ fun PlayerScreen(
 
                 loadingSubtitle = false
             }
+
+            // Prepare media item
 
             val mediaItem = if (
                 downloadedSubtitleUrl != null
@@ -128,13 +144,18 @@ fun PlayerScreen(
                 )
             }
 
-            player.setMediaItem(mediaItem)
-            player.prepare()
-            player.playWhenReady = true
+            // Start playback
+
+            exoPlayer.setMediaItem(mediaItem)
+
+            exoPlayer.prepare()
+
+            exoPlayer.playWhenReady = true
 
         } catch (e: CancellationException) {
 
-            player.stop()
+            exoPlayer.stop()
+
             throw e
 
         } catch (e: Exception) {
@@ -148,13 +169,15 @@ fun PlayerScreen(
         }
     }
 
+    // Screen UI
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
     ) {
 
-        // Header
+        // Top bar
 
         Row(
             modifier = Modifier
@@ -185,7 +208,7 @@ fun PlayerScreen(
             )
         }
 
-        // Video player
+        // Video area
 
         Box(
             modifier = Modifier
@@ -206,15 +229,14 @@ fun PlayerScreen(
             } else {
 
                 AndroidView(
+
                     modifier = Modifier.fillMaxSize(),
 
                     factory = { viewContext ->
 
                         PlayerView(viewContext).apply {
 
-                            player = this@PlayerScreen.run {
-                                this@run.player
-                            }
+                            this.player = exoPlayer
 
                             useController = true
                         }
@@ -222,10 +244,12 @@ fun PlayerScreen(
 
                     update = { playerView ->
 
-                        playerView.player = player
+                        playerView.player = exoPlayer
                     }
                 )
             }
+
+            // Subtitle loading indicator
 
             if (loadingSubtitle) {
 
@@ -238,7 +262,7 @@ fun PlayerScreen(
             }
         }
 
-        // Subtitle status
+        // Subtitle status message
 
         if (subtitleMessage.isNotBlank()) {
 
