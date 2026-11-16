@@ -3,7 +3,6 @@ package com.cinema.data
 import android.content.Context
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
-import com.cinema.data.api.ApiKeys
 
 object SubtitleKeyStore {
 
@@ -21,16 +20,36 @@ object SubtitleKeyStore {
             EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
         )
 
-    fun get(context: Context): String =
-        preferences(context)
-            .getString(KEY_SUBDL, ApiKeys.SUBDL)
-            .orEmpty()
-            .ifBlank { ApiKeys.SUBDL }
+    fun get(context: Context): String {
+        return try {
+            preferences(context)
+                .getString(KEY_SUBDL, null)
+                ?.trim()
+                .orEmpty()
+        } catch (e: Exception) {
+            ""
+        }
+    }
 
     fun save(context: Context, key: String) {
+        require(key.isNotBlank()) {
+            "SubDL API key cannot be empty."
+        }
+
         preferences(context)
             .edit()
             .putString(KEY_SUBDL, key.trim())
             .apply()
+    }
+
+    fun clear(context: Context) {
+        preferences(context)
+            .edit()
+            .remove(KEY_SUBDL)
+            .apply()
+    }
+
+    fun hasKey(context: Context): Boolean {
+        return get(context).isNotBlank()
     }
 }
