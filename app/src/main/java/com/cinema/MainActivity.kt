@@ -1,4 +1,3 @@
-
 package com.cinema
 
 import android.net.Uri
@@ -15,6 +14,7 @@ import com.cinema.data.model.MediaItem
 import com.cinema.ui.screens.DetailScreen
 import com.cinema.ui.screens.HomeScreen
 import com.cinema.ui.screens.PlayerScreen
+import com.cinema.ui.screens.SettingsScreen
 import com.cinema.ui.theme.CinemaTheme
 import com.google.gson.Gson
 
@@ -43,11 +43,28 @@ fun CinemaNavigation() {
     ) {
 
         composable("home") {
+
             HomeScreen(
                 onMediaClick = { item: MediaItem ->
+
                     val json = gson.toJson(item)
                     val encodedItem = Uri.encode(json)
-                    navController.navigate("detail/$encodedItem")
+
+                    navController.navigate(
+                        "detail/$encodedItem"
+                    )
+                },
+                onSettingsClick = {
+                    navController.navigate("settings")
+                }
+            )
+        }
+
+        composable("settings") {
+
+            SettingsScreen(
+                onBack = {
+                    navController.popBackStack()
                 }
             )
         }
@@ -61,9 +78,10 @@ fun CinemaNavigation() {
             )
         ) { backStackEntry ->
 
-            val encodedItem = backStackEntry.arguments
-                ?.getString("itemJson")
-                .orEmpty()
+            val encodedItem =
+                backStackEntry.arguments
+                    ?.getString("itemJson")
+                    .orEmpty()
 
             val item = runCatching {
                 gson.fromJson(
@@ -73,8 +91,11 @@ fun CinemaNavigation() {
             }.getOrNull()
 
             if (item == null) {
+
                 navController.popBackStack()
+
             } else {
+
                 DetailScreen(
                     item = item,
                     onBack = {
@@ -111,17 +132,20 @@ fun CinemaNavigation() {
             )
         ) { backStackEntry ->
 
-            val videoUrl = backStackEntry.arguments
-                ?.getString("videoUrl")
-                .orEmpty()
+            val videoUrl =
+                backStackEntry.arguments
+                    ?.getString("videoUrl")
+                    .orEmpty()
 
-            val title = backStackEntry.arguments
-                ?.getString("title")
-                .orEmpty()
+            val title =
+                backStackEntry.arguments
+                    ?.getString("title")
+                    .orEmpty()
 
-            val subtitleUrl = backStackEntry.arguments
-                ?.getString("subtitleUrl")
-                .orEmpty()
+            val subtitleUrl =
+                backStackEntry.arguments
+                    ?.getString("subtitleUrl")
+                    .orEmpty()
 
             PlayerScreen(
                 videoUrl = videoUrl,
