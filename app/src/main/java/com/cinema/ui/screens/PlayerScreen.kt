@@ -1,56 +1,144 @@
 
-package com.cinema.player
+package com.cinema.ui.screens
 
-import android.net.Uri
-import androidx.media3.common.C
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
-import androidx.media3.common.MimeTypes
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
+import com.cinema.data.SubtitleDownloader
+import com.cinema.player.SubtitlePlayer
+import kotlinx.coroutines.CancellationException
 
-object SubtitlePlayer {
+@Composable
+fun PlayerScreen(
+    videoUrl: String,
+    title: String,
+    subtitleUrl: String?,
+    onBack: () -> Unit
+) {
+    val context = LocalContext.current
 
-    /**
-     * Creates a Media3 MediaItem with an external SRT subtitle.
-     *
-     * videoUrl:
-     * The movie or episode video URL.
-     *
-     * subtitleUrl:
-     * The local SRT file URI or a supported subtitle URL.
-     */
-    fun createMediaItem(
-        videoUrl: String,
-        subtitleUrl: String
-    ): MediaItem {
+    val player = remember(context) {
+        ExoPlayer.Builder(context).build()
+    }
 
-        require(videoUrl.isNotBlank()) {
-            "آدرس ویدئو خالی است"
+    var loading by remember {
+        mutableStateOf(false)
+    }
+
+    var error by remember {
+        mutableStateOf<String?>(null)
+    }
+
+    LaunchedEffect(videoUrl, subtitleUrl) {
+
+        if (videoUrl.isBlank()) {
+            error = "آدرس ویدئو معتبر نیست"
+            return@LaunchedEffect
         }
 
-        require(subtitleUrl.isNotBlank()) {
-            "آدرس زیرنویس خالی است"
+        loading = true
+        error = null
+
+        try {
+            val mediaItem = if (!subtitleUrl.isNullOrBlank()) {
+
+                val subtitleFile = SubtitleDownloader.download(
+                    context = context,
+                    subtitleUrl = subtitleUrl
+                )
+
+                SubtitlePlayer.createMediaItem(
+                    videoUrl = videoUrl,
+                    subtitleUrl = subtitleFile.toURI().toString()
+                )
+
+            } else {
+                MediaItem.fromUri(videoUrl)
+            }
+
+            player.setMediaItem(mediaItem)
+            player.prepare()
+            player.playWhenReady = true
+
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            error = e.message ?: "پخش ویدئو ناموفق بود"
+        } finally {
+            loading = false
+        }
+    }
+
+    DisposableEffect(player) {
+        onDispose {
+            player.release()
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+
+        Button(
+            onClick = onBack,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("بازگشت")
         }
 
-        val videoUri = Uri.parse(videoUrl)
-        val subtitleUri = Uri.parse(subtitleUrl)
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleLarge
+        )
 
-        val subtitleConfiguration =
-            MediaItem.SubtitleConfiguration.Builder(
-                subtitleUri
-            )
-                .setMimeType(
-                    MimeTypes.APPLICATION_SUBRIP
-                )
-                .setLanguage("fa")
-                .setSelectionFlags(
-                    C.SELECTION_FLAG_DEFAULT
-                )
-                .build()
+        AndroidView(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+            factory = { viewContext ->
+                PlayerView(viewContext).apply {
+                    this.player = player
+                    useController = true
+                }
+            },
+            update = { view ->
+                view.player = player
+            }
+        )
 
-        return MediaItem.Builder()
-            .setUri(videoUri)
-            .setSubtitleConfigurations(
-                listOf(subtitleConfiguration)
+        if (loading) {
+            CircularProgressIndicator()
+            Text("در حال آماده‌سازی ویدئو و زیرنویس...")
+        }
+
+        error?.let {
+            Text(
+                text = it,
+                color = MaterialTheme.colorScheme.error
             )
-            .build()
+        }
     }
 }
