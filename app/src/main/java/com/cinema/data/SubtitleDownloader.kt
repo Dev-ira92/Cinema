@@ -12,23 +12,17 @@ import java.util.zip.ZipInputStream
 
 object SubtitleDownloader {
 
-    private const val MAX_DOWNLOAD_BYTES = 50L * 1024 * 1024
-    private const val MAX_EXTRACTED_BYTES = 100L * 1024 * 1024
+    private const val MAX_DOWNLOAD_BYTES =
+        50L * 1024 * 1024
+
+    private const val MAX_EXTRACTED_BYTES =
+        100L * 1024 * 1024
 
     private val client = OkHttpClient.Builder()
         .followRedirects(true)
         .followSslRedirects(true)
         .build()
 
-    /**
-     * Downloads an SRT subtitle.
-     *
-     * Supports:
-     * - Direct .srt links
-     * - ZIP archives containing an .srt file
-     *
-     * Returns the extracted/downloaded SRT file.
-     */
     suspend fun download(
         context: Context,
         subtitleUrl: String
@@ -52,7 +46,7 @@ object SubtitleDownloader {
 
             if (!response.isSuccessful) {
                 throw IllegalStateException(
-                    "دانلود زیرنویس ناموفق بود: HTTP ${response.code}"
+                    "دانلود ناموفق بود: HTTP ${response.code}"
                 )
             }
 
@@ -61,24 +55,23 @@ object SubtitleDownloader {
                     "سرور فایل خالی ارسال کرد"
                 )
 
-            val contentLength = body.contentLength()
-
             if (
-                contentLength > MAX_DOWNLOAD_BYTES
+                body.contentLength() > MAX_DOWNLOAD_BYTES
             ) {
                 throw IllegalStateException(
-                    "حجم فایل زیرنویس بیش از حد مجاز است"
+                    "حجم فایل بیش از حد مجاز است"
                 )
             }
 
             val tempFile = File(
                 context.cacheDir,
-                "subtitle_download_${System.currentTimeMillis()}.tmp"
+                "subtitle_${System.nanoTime()}.tmp"
             )
 
             try {
 
                 body.byteStream().use { input ->
+
                     FileOutputStream(tempFile).use { output ->
 
                         val buffer = ByteArray(8192)
@@ -94,7 +87,7 @@ object SubtitleDownloader {
 
                             if (total > MAX_DOWNLOAD_BYTES) {
                                 throw IllegalStateException(
-                                    "حجم فایل از حد مجاز بیشتر شد"
+                                    "حجم دانلود بیش از حد مجاز است"
                                 )
                             }
 
@@ -111,54 +104,48 @@ object SubtitleDownloader {
                     )
                 }
 
-                val outputFile = if (
-                    isZipFile(tempFile)
-                ) {
+                if (isZipFile(tempFile)) {
+
                     extractSrt(
                         tempFile,
                         context.cacheDir
                     )
+
                 } else {
 
-                    if (!isSrtFile(tempFile)) {
+                    if (!hasSrtTimestamp(tempFile)) {
                         throw IllegalStateException(
                             "فایل دریافت‌شده زیرنویس SRT معتبر نیست"
                         )
                     }
 
-                    File(
+                    val destination = File(
                         context.cacheDir,
-                        "subtitle_${System.currentTimeMillis()}.srt"
-                    ).also { destination ->
-                        if (!tempFile.renameTo(destination)) {
-                            tempFile.copyTo(
-                                destination,
-                                overwrite = true
-                            )
-                        }
-                    }
-                }
+                        "subtitle_${System.nanoTime()}.srt"
+                    )
 
-                outputFile
+                    tempFile.copyTo(
+                        destination,
+                        overwrite = true
+                    )
+
+                    destination
+                }
 
             } finally {
-                if (tempFile.exists()) {
-                    tempFile.delete()
-                }
+
+                tempFile.delete()
             }
         }
     }
 
-    /**
-     * Converts relative SubDL download paths into absolute URLs.
-     */
     private fun normalizeUrl(value: String): String {
 
         val clean = value.trim()
 
         if (
-            clean.startsWith("https://", ignoreCase = true) ||
-            clean.startsWith("http://", ignoreCase = true)
+            clean.startsWith("https://", true) ||
+            clean.startsWith("http://", true)
         ) {
             return clean
         }
@@ -171,9 +158,6 @@ object SubtitleDownloader {
             clean.removePrefix("/")
     }
 
-    /**
-     * Detect ZIP by its file signature, not by its extension.
-     */
     private fun isZipFile(file: File): Boolean {
 
         val signature = ByteArray(4)
@@ -188,45 +172,34 @@ object SubtitleDownloader {
             signature[3] == 0x04.toByte()
     }
 
-    /**
-     * Basic SRT validation.
-     */
-    private fun isSrtFile(file: File): Boolean {
+    private fun hasSrtTimestamp(file: File): Boolean {
 
         if (!file.isFile || file.length() == 0L) {
             return false
         }
 
-        val extensionLooksCorrect =
-            file.name.endsWith(".srt", true)
-
-        val beginning = ByteArray(512)
+        val sample = ByteArray(
+            minOf(file.length(), 8192L).toInt()
+        )
 
         val count = file.inputStream().use {
-            it.read(beginning)
+            it.read(sample)
         }
 
         if (count <= 0) return false
 
-        val sample = String(
-            beginning,
+        val content = String(
+            sample,
             0,
             count,
             Charsets.UTF_8
         ).removePrefix("\uFEFF")
 
-        val hasTimestamp =
-            Regex(
-                """\d{2}:\d{2}:\d{2}[,.]\d{3}\s*-->"""
-            ).containsMatchIn(sample)
-
-        return extensionLooksCorrect && hasTimestamp
+        return Regex(
+            """\d{2}:\d{2}:\d{2}[,.]\d{3}\s*-->"""
+        ).containsMatchIn(content)
     }
 
-    /**
-     * Extracts the first valid SRT file from a ZIP archive.
-     * Path traversal entries are ignored.
-     */
     private fun extractSrt(
         zipFile: File,
         cacheDir: File
@@ -248,14 +221,12 @@ object SubtitleDownloader {
                         continue
                     }
 
-                    val entryName = entry.name
+                    val safeName = entry.name
                         .replace('\\', '/')
-
-                    val safeName = entryName.substringAfterLast('/')
+                        .substringAfterLast('/')
 
                     if (
                         safeName.isBlank() ||
-                        safeName.startsWith(".") ||
                         !safeName.endsWith(".srt", true)
                     ) {
                         zip.closeEntry()
@@ -272,8 +243,6 @@ object SubtitleDownloader {
                         }"
                     )
 
-                    var entrySize = 0L
-
                     try {
 
                         FileOutputStream(destination).use { output ->
@@ -286,7 +255,6 @@ object SubtitleDownloader {
 
                                 if (count == -1) break
 
-                                entrySize += count
                                 extractedTotal += count
 
                                 if (
@@ -304,16 +272,11 @@ object SubtitleDownloader {
                             output.flush()
                         }
 
-                        if (isSrtFile(destination)) {
+                        if (hasSrtTimestamp(destination)) {
                             candidates.add(destination)
                         } else {
                             destination.delete()
                         }
-
-                    } catch (e: Exception) {
-
-                        destination.delete()
-                        throw e
 
                     } finally {
                         zip.closeEntry()
@@ -323,11 +286,10 @@ object SubtitleDownloader {
 
             if (candidates.isEmpty()) {
                 throw IllegalStateException(
-                    "داخل فایل ZIP زیرنویس SRT معتبر پیدا نشد"
+                    "فایل SRT معتبر در ZIP پیدا نشد"
                 )
             }
 
-            // Prefer the largest valid subtitle file.
             val selected = candidates.maxByOrNull {
                 it.length()
             } ?: throw IllegalStateException(
@@ -345,7 +307,7 @@ object SubtitleDownloader {
             candidates.forEach { it.delete() }
 
             throw IllegalStateException(
-                "استخراج زیرنویس از ZIP ناموفق بود: ${e.message}",
+                "استخراج ZIP ناموفق بود: ${e.message}",
                 e
             )
         }
