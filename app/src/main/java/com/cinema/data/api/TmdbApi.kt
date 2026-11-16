@@ -1,3 +1,4 @@
+
 package com.cinema.data.api
 
 import com.cinema.data.model.MovieDetail
@@ -5,6 +6,7 @@ import com.cinema.data.model.TmdbSearchResponse
 import com.cinema.data.model.TvDetail
 import com.cinema.data.model.TvSeasonDetail
 import okhttp3.OkHttpClient
+import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.GET
@@ -24,32 +26,32 @@ interface TmdbService {
 
     @GET("movie/popular")
     suspend fun popularMovies(
-        @Query("language") language: String = "fa-IR",
+        @Query("language") language: String = "en-US",
         @Query("page") page: Int = 1
     ): TmdbSearchResponse
 
     @GET("tv/popular")
     suspend fun popularTv(
-        @Query("language") language: String = "fa-IR",
+        @Query("language") language: String = "en-US",
         @Query("page") page: Int = 1
     ): TmdbSearchResponse
 
     @GET("trending/all/week")
     suspend fun trendingAll(
-        @Query("language") language: String = "fa-IR"
+        @Query("language") language: String = "en-US"
     ): TmdbSearchResponse
 
     @GET("movie/{id}")
     suspend fun movieDetail(
         @Path("id") id: Int,
-        @Query("language") language: String = "fa-IR",
+        @Query("language") language: String = "en-US",
         @Query("append_to_response") append: String = "credits"
     ): MovieDetail
 
     @GET("tv/{id}")
     suspend fun tvDetail(
         @Path("id") id: Int,
-        @Query("language") language: String = "fa-IR",
+        @Query("language") language: String = "en-US",
         @Query("append_to_response") append: String = "external_ids"
     ): TvDetail
 
@@ -57,36 +59,57 @@ interface TmdbService {
     suspend fun seasonDetail(
         @Path("id") id: Int,
         @Path("season_number") season: Int,
-        @Query("language") language: String = "fa-IR"
+        @Query("language") language: String = "en-US"
     ): TvSeasonDetail
 }
 
 object TmdbApi {
 
     private val client: OkHttpClient by lazy {
+
+        val logging = HttpLoggingInterceptor().apply {
+            level = HttpLoggingInterceptor.Level.NONE
+        }
+
         OkHttpClient.Builder()
             .addInterceptor { chain ->
-                val request = chain.request().newBuilder()
+
+                val token = ApiKeys.TMDB_BEARER
+
+                require(token.isNotBlank()) {
+                    "TMDB API token is missing. Add TMDB_BEARER_TOKEN to GitHub Secrets."
+                }
+
+                val request = chain.request()
+                    .newBuilder()
                     .addHeader(
                         "Authorization",
-                        "Bearer ${ApiKeys.TMDB_BEARER}"
+                        "Bearer $token"
                     )
-                    .addHeader("accept", "application/json")
+                    .addHeader(
+                        "accept",
+                        "application/json"
+                    )
                     .build()
 
                 chain.proceed(request)
             }
+            .addInterceptor(logging)
             .connectTimeout(12, TimeUnit.SECONDS)
             .readTimeout(18, TimeUnit.SECONDS)
-            .callTimeout(22, TimeUnit.SECONDS)
+            .writeTimeout(18, TimeUnit.SECONDS)
+            .callTimeout(25, TimeUnit.SECONDS)
             .build()
     }
 
     val service: TmdbService by lazy {
+
         Retrofit.Builder()
             .baseUrl("https://api.themoviedb.org/3/")
             .client(client)
-            .addConverterFactory(GsonConverterFactory.create())
+            .addConverterFactory(
+                GsonConverterFactory.create()
+            )
             .build()
             .create(TmdbService::class.java)
     }
