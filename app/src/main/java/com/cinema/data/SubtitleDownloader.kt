@@ -7,8 +7,13 @@ import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
+import java.nio.ByteBuffer
+import java.nio.charset.Charset
+import java.nio.charset.CodingErrorAction
+import java.nio.charset.StandardCharsets
 import java.util.concurrent.TimeUnit
 import java.util.zip.ZipInputStream
 
@@ -16,6 +21,12 @@ object SubtitleDownloader {
 
     private const val MAX_DOWNLOAD_BYTES = 50L * 1024 * 1024
     private const val MAX_EXTRACTED_BYTES = 100L * 1024 * 1024
+    private const val MAX_SUBTITLE_BYTES = 20L * 1024 * 1024
+    private const val MAX_ZIP_ENTRIES = 200
+
+    private val timestampRegex = Regex(
+        """\d{2}:\d{2}:\d{2}[,.]\d{3}\s*-->"""
+    )
 
     private val client = OkHttpClient.Builder()
         .followRedirects(true)
@@ -63,10 +74,11 @@ object SubtitleDownloader {
 
             val tempFile = File(
                 context.cacheDir,
-                "subtitle_${System.nanoTime()}.tmp"
+                "subtitle_download_${System.nanoTime()}.tmp"
             )
 
             try {
+
                 body.byteStream().use { input ->
                     FileOutputStream(tempFile).use { output ->
 
@@ -101,19 +113,10 @@ object SubtitleDownloader {
                 if (isZipFile(tempFile)) {
                     extractSrt(tempFile, context.cacheDir)
                 } else {
-                    if (!hasSrtTimestamp(tempFile)) {
-                        throw IllegalStateException(
-                            "The downloaded file is not a valid SRT subtitle."
-                        )
-                    }
-
-                    val destination = File(
-                        context.cacheDir,
-                        "subtitle_${System.nanoTime()}.srt"
+                    normalizeSrtFile(
+                        source = tempFile,
+                        destination = newSubtitleFile(context.cacheDir)
                     )
-
-                    tempFile.copyTo(destination, overwrite = true)
-                    destination
                 }
 
             } finally {
@@ -123,6 +126,7 @@ object SubtitleDownloader {
     }
 
     private fun normalizeUrl(value: String): String {
+
         val clean = value.trim()
 
         val normalized = when {
@@ -137,7 +141,10 @@ object SubtitleDownloader {
                 "Invalid subtitle URL."
             )
 
-        if (parsed.scheme != "https" && parsed.scheme != "http") {
+        if (
+            parsed.scheme != "https" &&
+            parsed.scheme != "http"
+        ) {
             throw IllegalArgumentException(
                 "Unsupported subtitle URL scheme."
             )
@@ -156,6 +163,7 @@ object SubtitleDownloader {
     }
 
     private fun isZipFile(file: File): Boolean {
+
         val signature = ByteArray(4)
 
         file.inputStream().use {
@@ -168,31 +176,142 @@ object SubtitleDownloader {
             signature[3] == 0x04.toByte()
     }
 
-    private fun hasSrtTimestamp(file: File): Boolean {
-        if (!file.isFile || file.length() == 0L) {
-            return false
+    private fun normalizeSrtFile(
+        source: File,
+        destination: File
+    ): File {
+
+        if (source.length() > MAX_SUBTITLE_BYTES) {
+            throw IllegalStateException(
+                "Subtitle file exceeds the allowed size."
+            )
         }
 
-        val sample = ByteArray(
-            minOf(file.length(), 8192L).toInt()
+        val bytes = source.readBytes()
+        val text = decodeSubtitle(bytes)
+
+        validateSrt(text)
+
+        destination.writeText(
+            text,
+            Charsets.UTF_8
         )
 
-        val count = file.inputStream().use {
-            it.read(sample)
+        return destination
+    }
+
+    private fun decodeSubtitle(bytes: ByteArray): String {
+
+        if (bytes.isEmpty()) {
+            throw IllegalStateException(
+                "Subtitle file is empty."
+            )
         }
 
-        if (count <= 0) return false
+        // UTF-8 BOM
+        if (
+            bytes.size >= 3 &&
+            bytes[0] == 0xEF.toByte() &&
+            bytes[1] == 0xBB.toByte() &&
+            bytes[2] == 0xBF.toByte()
+        ) {
+            return String(
+                bytes,
+                3,
+                bytes.size - 3,
+                StandardCharsets.UTF_8
+            )
+        }
 
-        val content = String(
-            sample,
-            0,
-            count,
-            Charsets.UTF_8
-        ).removePrefix("\uFEFF")
+        // UTF-16 Little Endian BOM
+        if (
+            bytes.size >= 2 &&
+            bytes[0] == 0xFF.toByte() &&
+            bytes[1] == 0xFE.toByte()
+        ) {
+            return String(
+                bytes,
+                2,
+                bytes.size - 2,
+                StandardCharsets.UTF_16LE
+            )
+        }
 
-        return Regex(
-            """\d{2}:\d{2}:\d{2}[,.]\d{3}\s*-->"""
-        ).containsMatchIn(content)
+        // UTF-16 Big Endian BOM
+        if (
+            bytes.size >= 2 &&
+            bytes[0] == 0xFE.toByte() &&
+            bytes[1] == 0xFF.toByte()
+        ) {
+            return String(
+                bytes,
+                2,
+                bytes.size - 2,
+                StandardCharsets.UTF_16BE
+            )
+        }
+
+        // Try strict UTF-8 first.
+        try {
+            val decoder = StandardCharsets.UTF_8
+                .newDecoder()
+                .onMalformedInput(CodingErrorAction.REPORT)
+                .onUnmappableCharacter(CodingErrorAction.REPORT)
+
+            return decoder.decode(
+                ByteBuffer.wrap(bytes)
+            ).toString()
+
+        } catch (_: Exception) {
+            // Continue with legacy Persian encoding.
+        }
+
+        // Common legacy encoding for Persian subtitles.
+        return try {
+            String(
+                bytes,
+                Charset.forName("windows-1256")
+            )
+        } catch (e: Exception) {
+            throw IllegalStateException(
+                "Unsupported subtitle text encoding.",
+                e
+            )
+        }
+    }
+
+    private fun validateSrt(text: String) {
+
+        val clean = text
+            .removePrefix("\uFEFF")
+            .trimStart()
+
+        if (clean.isBlank()) {
+            throw IllegalStateException(
+                "Subtitle file contains no text."
+            )
+        }
+
+        val lower = clean
+            .take(1000)
+            .lowercase()
+
+        if (
+            lower.startsWith("<!doctype html") ||
+            lower.startsWith("<html") ||
+            lower.contains("<head") ||
+            lower.contains("<body")
+        ) {
+            throw IllegalStateException(
+                "The server returned a web page instead of a subtitle."
+            )
+        }
+
+        if (!timestampRegex.containsMatchIn(clean)) {
+            throw IllegalStateException(
+                "The downloaded file is not a valid SRT subtitle."
+            )
+        }
     }
 
     private fun extractSrt(
@@ -201,13 +320,24 @@ object SubtitleDownloader {
     ): File {
 
         val candidates = mutableListOf<File>()
+
         var extractedTotal = 0L
+        var entryCount = 0
 
         try {
+
             ZipInputStream(zipFile.inputStream()).use { zip ->
 
                 while (true) {
+
                     val entry = zip.nextEntry ?: break
+                    entryCount++
+
+                    if (entryCount > MAX_ZIP_ENTRIES) {
+                        throw IllegalStateException(
+                            "ZIP archive contains too many files."
+                        )
+                    }
 
                     if (entry.isDirectory) {
                         zip.closeEntry()
@@ -226,57 +356,66 @@ object SubtitleDownloader {
                         continue
                     }
 
-                    val destination = File(
-                        cacheDir,
-                        "subtitle_${System.nanoTime()}_${
-                            safeName.replace(
-                                Regex("[^A-Za-z0-9._-]"),
-                                "_"
+                    val outputBuffer = ByteArrayOutputStream()
+                    val buffer = ByteArray(8192)
+                    var entryBytes = 0L
+
+                    while (true) {
+
+                        val count = zip.read(buffer)
+
+                        if (count == -1) break
+
+                        entryBytes += count
+                        extractedTotal += count
+
+                        if (entryBytes > MAX_SUBTITLE_BYTES) {
+                            throw IllegalStateException(
+                                "A subtitle file in the ZIP is too large."
                             )
-                        }"
-                    )
+                        }
+
+                        if (extractedTotal > MAX_EXTRACTED_BYTES) {
+                            throw IllegalStateException(
+                                "Extracted files exceed the size limit."
+                            )
+                        }
+
+                        outputBuffer.write(
+                            buffer,
+                            0,
+                            count
+                        )
+                    }
+
+                    zip.closeEntry()
+
+                    val content = outputBuffer.toByteArray()
 
                     try {
-                        FileOutputStream(destination).use { output ->
 
-                            val buffer = ByteArray(8192)
+                        val decoded = decodeSubtitle(content)
 
-                            while (true) {
-                                val count = zip.read(buffer)
-                                if (count == -1) break
+                        validateSrt(decoded)
 
-                                extractedTotal += count
+                        val destination = newSubtitleFile(cacheDir)
 
-                                if (
-                                    extractedTotal >
-                                    MAX_EXTRACTED_BYTES
-                                ) {
-                                    throw IllegalStateException(
-                                        "Extracted subtitle files exceed the size limit."
-                                    )
-                                }
+                        destination.writeText(
+                            decoded,
+                            Charsets.UTF_8
+                        )
 
-                                output.write(buffer, 0, count)
-                            }
+                        candidates.add(destination)
 
-                            output.flush()
-                        }
-
-                        if (hasSrtTimestamp(destination)) {
-                            candidates.add(destination)
-                        } else {
-                            destination.delete()
-                        }
-
-                    } finally {
-                        zip.closeEntry()
+                    } catch (_: Exception) {
+                        // Ignore invalid SRT entries and inspect the next one.
                     }
                 }
             }
 
             if (candidates.isEmpty()) {
                 throw IllegalStateException(
-                    "No valid SRT file was found in the ZIP archive."
+                    "No valid SRT subtitle was found in the ZIP archive."
                 )
             }
 
@@ -293,12 +432,22 @@ object SubtitleDownloader {
             return selected
 
         } catch (e: Exception) {
-            candidates.forEach { it.delete() }
+
+            candidates.forEach {
+                it.delete()
+            }
 
             throw IllegalStateException(
                 "Could not extract subtitle archive: ${e.message}",
                 e
             )
         }
+    }
+
+    private fun newSubtitleFile(cacheDir: File): File {
+        return File(
+            cacheDir,
+            "cinema_subtitle_${System.nanoTime()}.srt"
+        )
     }
 }
