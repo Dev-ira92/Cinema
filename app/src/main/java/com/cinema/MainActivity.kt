@@ -42,21 +42,16 @@ fun CinemaNavigation() {
         startDestination = "home"
     ) {
 
-        // صفحه اصلی
         composable("home") {
-
             HomeScreen(
-                onItemClick = { item: MediaItem ->
-
+                onMediaClick = { item: MediaItem ->
                     val json = gson.toJson(item)
                     val encodedItem = Uri.encode(json)
-
                     navController.navigate("detail/$encodedItem")
                 }
             )
         }
 
-        // صفحه جزئیات فیلم یا سریال
         composable(
             route = "detail/{itemJson}",
             arguments = listOf(
@@ -67,17 +62,20 @@ fun CinemaNavigation() {
         ) { backStackEntry ->
 
             val encodedItem =
-                backStackEntry.arguments?.getString("itemJson").orEmpty()
+                backStackEntry.arguments
+                    ?.getString("itemJson")
+                    .orEmpty()
 
             val item = runCatching {
-                val json = Uri.decode(encodedItem)
-                gson.fromJson(json, MediaItem::class.java)
+                gson.fromJson(
+                    Uri.decode(encodedItem),
+                    MediaItem::class.java
+                )
             }.getOrNull()
 
             if (item == null) {
                 navController.popBackStack()
             } else {
-
                 DetailScreen(
                     item = item,
                     onBack = {
@@ -88,7 +86,7 @@ fun CinemaNavigation() {
                         val route =
                             "player?videoUrl=${Uri.encode(videoUrl)}" +
                             "&title=${Uri.encode(title)}" +
-                            "&subtitleUrl=${Uri.encode(subtitleUrl)}"
+                            "&subtitleUrl=${Uri.encode(subtitleUrl.orEmpty())}"
 
                         navController.navigate(route)
                     }
@@ -96,7 +94,6 @@ fun CinemaNavigation() {
             }
         }
 
-        // صفحه پخش فیلم
         composable(
             route = "player?videoUrl={videoUrl}&title={title}&subtitleUrl={subtitleUrl}",
             arguments = listOf(
@@ -116,13 +113,19 @@ fun CinemaNavigation() {
         ) { backStackEntry ->
 
             val videoUrl =
-                backStackEntry.arguments?.getString("videoUrl").orEmpty()
+                backStackEntry.arguments
+                    ?.getString("videoUrl")
+                    .orEmpty()
 
             val title =
-                backStackEntry.arguments?.getString("title").orEmpty()
+                backStackEntry.arguments
+                    ?.getString("title")
+                    .orEmpty()
 
             val subtitleUrl =
-                backStackEntry.arguments?.getString("subtitleUrl").orEmpty()
+                backStackEntry.arguments
+                    ?.getString("subtitleUrl")
+                    .orEmpty()
 
             PlayerScreen(
                 videoUrl = videoUrl,
