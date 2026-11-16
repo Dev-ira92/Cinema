@@ -1,3 +1,4 @@
+
 package com.cinema.viewmodel
 
 import androidx.lifecycle.ViewModel
@@ -13,6 +14,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import retrofit2.HttpException
 
 data class HomeUiState(
     val loading: Boolean = false,
@@ -22,7 +24,8 @@ data class HomeUiState(
     val tvShows: List<MediaItem> = emptyList(),
     val trending: List<MediaItem> = emptyList(),
     val results: List<MediaItem> = emptyList(),
-    val error: String? = null
+    val error: String? = null,
+    val searchError: String? = null
 )
 
 class HomeViewModel : ViewModel() {
@@ -32,6 +35,8 @@ class HomeViewModel : ViewModel() {
 
     private var searchJob: Job? = null
     private var homeJob: Job? = null
+
+    private var searchRequestId = 0L
 
     init {
         loadHome()
@@ -88,47 +93,63 @@ class HomeViewModel : ViewModel() {
     }
 
     fun onQueryChanged(value: String) {
-        _state.value = _state.value.copy(
-            query = value,
-            error = null
-        )
+
+        searchRequestId++
+        val currentRequestId = searchRequestId
 
         searchJob?.cancel()
+
+        _state.value = _state.value.copy(
+            query = value,
+            searching = false,
+            results = emptyList(),
+            searchError = null
+        )
 
         val query = value.trim()
 
         if (query.length < 2) {
-            _state.value = _state.value.copy(
-                searching = false,
-                results = emptyList()
-            )
             return
         }
 
-        searchJob = viewModelScope.launch {
-            delay(300)
+        // Show loading immediately, including during debounce.
+        _state.value = _state.value.copy(
+            searching = true
+        )
 
-            _state.value = _state.value.copy(
-                searching = true,
-                error = null
-            )
+        searchJob = viewModelScope.launch {
 
             try {
+                // Debounce rapid typing.
+                delay(350)
+
                 val response = TmdbApi.service.searchMulti(
                     query = query,
-                    language = "en-US"
+                    language = "en-US",
+                    page = 1,
+                    includeAdult = false
                 )
 
-                val filtered = response.results.filter {
-                    it.mediaType == "movie" ||
-                        it.mediaType == "tv"
+                // Ignore outdated responses.
+                if (currentRequestId != searchRequestId) {
+                    return@launch
                 }
+
+                val filtered = response.results
+                    .filter {
+                        it.id > 0 &&
+                            (it.mediaType == "movie" ||
+                                it.mediaType == "tv")
+                    }
+                    .distinctBy {
+                        "${it.mediaType}:${it.id}"
+                    }
 
                 _state.value = _state.value.copy(
                     searching = false,
                     results = filtered,
-                    error = if (filtered.isEmpty()) {
-                        "No matching movies or TV shows were found."
+                    searchError = if (filtered.isEmpty()) {
+                        "No matching movies or TV shows were found. Try another title."
                     } else {
                         null
                     }
@@ -137,24 +158,60 @@ class HomeViewModel : ViewModel() {
             } catch (e: CancellationException) {
                 throw e
 
-            } catch (e: Exception) {
+            } catch (e: HttpException) {
+
+                if (currentRequestId != searchRequestId) {
+                    return@launch
+                }
+
+                val message = when (e.code()) {
+                    401, 403 ->
+                        "TMDB rejected the API credentials. Check your configuration."
+
+                    404 ->
+                        "The search service could not be found."
+
+                    429 ->
+                        "Too many searches. Please wait a moment and try again."
+
+                    in 500..599 ->
+                        "TMDB is temporarily unavailable. Please try again later."
+
+                    else ->
+                        "Search failed: HTTP ${e.code()}."
+                }
+
                 _state.value = _state.value.copy(
                     searching = false,
                     results = emptyList(),
-                    error = "Search failed. Please check your connection and try again."
+                    searchError = message
+                )
+
+            } catch (e: Exception) {
+
+                if (currentRequestId != searchRequestId) {
+                    return@launch
+                }
+
+                _state.value = _state.value.copy(
+                    searching = false,
+                    results = emptyList(),
+                    searchError = "Search failed. Check your internet connection and try again."
                 )
             }
         }
     }
 
     fun clearSearch() {
+        searchRequestId++
         searchJob?.cancel()
+        searchJob = null
 
         _state.value = _state.value.copy(
             query = "",
             results = emptyList(),
             searching = false,
-            error = null
+            searchError = null
         )
     }
 }
