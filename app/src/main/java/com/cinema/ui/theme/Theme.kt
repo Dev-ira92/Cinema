@@ -2,18 +2,28 @@ package com.cinema.ui.theme
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.Typography
 import androidx.compose.runtime.Composable
 
 private val CinemaDarkColors = darkColorScheme(
     primary = CinemaPrimary,
+    onPrimary = CinemaOnPrimary,
+
     secondary = CinemaSecondary,
-    background = CinemaBackground,
-    surface = CinemaSurface,
-    onPrimary = CinemaText,
     onSecondary = CinemaBackground,
-    onBackground = CinemaText,
-    onSurface = CinemaText,
-    error = CinemaRed
+
+    background = CinemaBackground,
+    onBackground = CinemaOnBackground,
+
+    surface = CinemaSurface,
+    onSurface = CinemaOnSurface,
+
+    error = CinemaRed,
+
+    surfaceVariant = CinemaCard,
+    onSurfaceVariant = CinemaMuted,
+
+    outline = CinemaBorder
 )
 
 @Composable
@@ -22,7 +32,7 @@ fun CinemaTheme(
 ) {
     MaterialTheme(
         colorScheme = CinemaDarkColors,
-        typography = androidx.compose.material3.Typography(),
+        typography = Typography(),
         content = content
     )
 }
