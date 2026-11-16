@@ -2,14 +2,10 @@
 package com.cinema.player
 
 import android.net.Uri
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
-import androidx.media3.common.util.UnstableApi
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.source.MediaSource
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 
-@UnstableApi
 object SubtitlePlayer {
 
     fun createMediaItem(
@@ -17,41 +13,29 @@ object SubtitlePlayer {
         subtitleUrl: String?
     ): MediaItem {
 
+        require(videoUrl.isNotBlank()) {
+            "آدرس ویدئو خالی است"
+        }
+
         val builder = MediaItem.Builder()
             .setUri(Uri.parse(videoUrl))
 
         if (!subtitleUrl.isNullOrBlank()) {
 
-            val subtitle = MediaItem.SubtitleConfiguration.Builder(
-                Uri.parse(subtitleUrl)
-            )
-                .setMimeType(MimeTypes.APPLICATION_SUBRIP)
-                .setLanguage("fa")
-                .setSelectionFlags(
-                    MediaItem.SelectionFlags.DEFAULT
+            val subtitleConfiguration =
+                MediaItem.SubtitleConfiguration.Builder(
+                    Uri.parse(subtitleUrl)
                 )
-                .build()
+                    .setMimeType(MimeTypes.APPLICATION_SUBRIP)
+                    .setLanguage("fa")
+                    .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+                    .build()
 
             builder.setSubtitleConfigurations(
-                listOf(subtitle)
+                listOf(subtitleConfiguration)
             )
         }
 
         return builder.build()
-    }
-
-    fun preparePlayer(
-        player: ExoPlayer,
-        videoUrl: String,
-        subtitleUrl: String?
-    ) {
-
-        val mediaItem = createMediaItem(
-            videoUrl = videoUrl,
-            subtitleUrl = subtitleUrl
-        )
-
-        player.setMediaItem(mediaItem)
-        player.prepare()
     }
 }
