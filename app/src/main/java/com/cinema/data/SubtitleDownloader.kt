@@ -1,4 +1,3 @@
-
 package com.cinema.data
 
 import android.content.Context
@@ -12,15 +11,15 @@ import java.util.zip.ZipInputStream
 
 object SubtitleDownloader {
 
-    private const val MAX_DOWNLOAD_BYTES =
-        50L * 1024 * 1024
-
-    private const val MAX_EXTRACTED_BYTES =
-        100L * 1024 * 1024
+    private const val MAX_DOWNLOAD_BYTES = 50L * 1024 * 1024
+    private const val MAX_EXTRACTED_BYTES = 100L * 1024 * 1024
 
     private val client = OkHttpClient.Builder()
         .followRedirects(true)
         .followSslRedirects(true)
+        .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+        .readTimeout(45, java.util.concurrent.TimeUnit.SECONDS)
+        .callTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
         .build()
 
     suspend fun download(
@@ -29,37 +28,33 @@ object SubtitleDownloader {
     ): File = withContext(Dispatchers.IO) {
 
         require(subtitleUrl.isNotBlank()) {
-            "آدرس زیرنویس خالی است"
+            "Subtitle URL is empty."
         }
 
         val url = normalizeUrl(subtitleUrl)
 
         val request = Request.Builder()
             .url(url)
-            .header(
-                "User-Agent",
-                "Mozilla/5.0 (Android) CinemaApp/1.0"
-            )
+            .header("User-Agent", "CinemaApp/1.0 (Android)")
+            .header("Accept", "*/*")
             .build()
 
         client.newCall(request).execute().use { response ->
 
             if (!response.isSuccessful) {
                 throw IllegalStateException(
-                    "دانلود ناموفق بود: HTTP ${response.code}"
+                    "Subtitle download failed: HTTP ${response.code}"
                 )
             }
 
             val body = response.body
                 ?: throw IllegalStateException(
-                    "سرور فایل خالی ارسال کرد"
+                    "The server returned an empty file."
                 )
 
-            if (
-                body.contentLength() > MAX_DOWNLOAD_BYTES
-            ) {
+            if (body.contentLength() > MAX_DOWNLOAD_BYTES) {
                 throw IllegalStateException(
-                    "حجم فایل بیش از حد مجاز است"
+                    "Subtitle file exceeds the size limit."
                 )
             }
 
@@ -69,25 +64,21 @@ object SubtitleDownloader {
             )
 
             try {
-
                 body.byteStream().use { input ->
-
                     FileOutputStream(tempFile).use { output ->
 
                         val buffer = ByteArray(8192)
                         var total = 0L
 
                         while (true) {
-
                             val count = input.read(buffer)
-
                             if (count == -1) break
 
                             total += count
 
                             if (total > MAX_DOWNLOAD_BYTES) {
                                 throw IllegalStateException(
-                                    "حجم دانلود بیش از حد مجاز است"
+                                    "Subtitle download exceeds the size limit."
                                 )
                             }
 
@@ -98,24 +89,18 @@ object SubtitleDownloader {
                     }
                 }
 
-                if (tempFile.length() == 0L) {
+                if (!tempFile.isFile || tempFile.length() == 0L) {
                     throw IllegalStateException(
-                        "فایل دانلودشده خالی است"
+                        "The downloaded file is empty."
                     )
                 }
 
                 if (isZipFile(tempFile)) {
-
-                    extractSrt(
-                        tempFile,
-                        context.cacheDir
-                    )
-
+                    extractSrt(tempFile, context.cacheDir)
                 } else {
-
                     if (!hasSrtTimestamp(tempFile)) {
                         throw IllegalStateException(
-                            "فایل دریافت‌شده زیرنویس SRT معتبر نیست"
+                            "The downloaded file is not a valid SRT subtitle."
                         )
                     }
 
@@ -124,42 +109,40 @@ object SubtitleDownloader {
                         "subtitle_${System.nanoTime()}.srt"
                     )
 
-                    tempFile.copyTo(
-                        destination,
-                        overwrite = true
-                    )
-
+                    tempFile.copyTo(destination, overwrite = true)
                     destination
                 }
-
             } finally {
-
                 tempFile.delete()
             }
         }
     }
 
     private fun normalizeUrl(value: String): String {
-
         val clean = value.trim()
 
-        if (
-            clean.startsWith("https://", true) ||
-            clean.startsWith("http://", true)
-        ) {
-            return clean
+        val normalized = when {
+            clean.startsWith("https://", true) -> clean
+            clean.startsWith("http://", true) -> clean
+            clean.startsWith("//") -> "https:$clean"
+            else -> "https://dl.subdl.com/${clean.removePrefix("/")}"
         }
 
-        if (clean.startsWith("//")) {
-            return "https:$clean"
+        val parsed = okhttp3.HttpUrl.toHttpUrlOrNull(normalized)
+            ?: throw IllegalArgumentException("Invalid subtitle URL.")
+
+        if (parsed.scheme != "https" && parsed.scheme != "http") {
+            throw IllegalArgumentException("Unsupported subtitle URL scheme.")
         }
 
-        return "https://dl.subdl.com/" +
-            clean.removePrefix("/")
+        if (parsed.username.isNotEmpty() || parsed.password.isNotEmpty()) {
+            throw IllegalArgumentException("Invalid subtitle URL.")
+        }
+
+        return parsed.toString()
     }
 
     private fun isZipFile(file: File): Boolean {
-
         val signature = ByteArray(4)
 
         file.inputStream().use {
@@ -173,10 +156,7 @@ object SubtitleDownloader {
     }
 
     private fun hasSrtTimestamp(file: File): Boolean {
-
-        if (!file.isFile || file.length() == 0L) {
-            return false
-        }
+        if (!file.isFile || file.length() == 0L) return false
 
         val sample = ByteArray(
             minOf(file.length(), 8192L).toInt()
@@ -209,11 +189,9 @@ object SubtitleDownloader {
         var extractedTotal = 0L
 
         try {
-
             ZipInputStream(zipFile.inputStream()).use { zip ->
 
                 while (true) {
-
                     val entry = zip.nextEntry ?: break
 
                     if (entry.isDirectory) {
@@ -244,25 +222,19 @@ object SubtitleDownloader {
                     )
 
                     try {
-
                         FileOutputStream(destination).use { output ->
 
                             val buffer = ByteArray(8192)
 
                             while (true) {
-
                                 val count = zip.read(buffer)
-
                                 if (count == -1) break
 
                                 extractedTotal += count
 
-                                if (
-                                    extractedTotal >
-                                    MAX_EXTRACTED_BYTES
-                                ) {
+                                if (extractedTotal > MAX_EXTRACTED_BYTES) {
                                     throw IllegalStateException(
-                                        "حجم فایل استخراج‌شده بیش از حد مجاز است"
+                                        "Extracted subtitle files exceed the size limit."
                                     )
                                 }
 
@@ -277,7 +249,6 @@ object SubtitleDownloader {
                         } else {
                             destination.delete()
                         }
-
                     } finally {
                         zip.closeEntry()
                     }
@@ -286,14 +257,14 @@ object SubtitleDownloader {
 
             if (candidates.isEmpty()) {
                 throw IllegalStateException(
-                    "فایل SRT معتبر در ZIP پیدا نشد"
+                    "No valid SRT file was found in the ZIP archive."
                 )
             }
 
             val selected = candidates.maxByOrNull {
                 it.length()
             } ?: throw IllegalStateException(
-                "انتخاب زیرنویس ناموفق بود"
+                "Could not select a subtitle file."
             )
 
             candidates
@@ -303,11 +274,10 @@ object SubtitleDownloader {
             return selected
 
         } catch (e: Exception) {
-
             candidates.forEach { it.delete() }
 
             throw IllegalStateException(
-                "استخراج ZIP ناموفق بود: ${e.message}",
+                "Could not extract subtitle archive: ${e.message}",
                 e
             )
         }
