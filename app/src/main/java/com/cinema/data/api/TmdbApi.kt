@@ -1,4 +1,3 @@
-
 package com.cinema.data.api
 
 import com.cinema.data.model.MovieDetail
@@ -18,22 +17,22 @@ interface TmdbService {
 
     @GET("search/multi")
     suspend fun searchMulti(
-        @Query("query") query: String,
-        @Query("language") language: String = "en-US",
-        @Query("page") page: Int = 1,
-        @Query("include_adult") includeAdult: Boolean = false
+        @Query("query")          query        : String,
+        @Query("language")       language     : String  = "en-US",
+        @Query("page")           page         : Int     = 1,
+        @Query("include_adult")  includeAdult : Boolean = false
     ): TmdbSearchResponse
 
     @GET("movie/popular")
     suspend fun popularMovies(
         @Query("language") language: String = "en-US",
-        @Query("page") page: Int = 1
+        @Query("page")     page    : Int    = 1
     ): TmdbSearchResponse
 
     @GET("tv/popular")
     suspend fun popularTv(
         @Query("language") language: String = "en-US",
-        @Query("page") page: Int = 1
+        @Query("page")     page    : Int    = 1
     ): TmdbSearchResponse
 
     @GET("trending/all/week")
@@ -43,58 +42,42 @@ interface TmdbService {
 
     @GET("movie/{id}")
     suspend fun movieDetail(
-        @Path("id") id: Int,
-        @Query("language") language: String = "en-US",
-        @Query("append_to_response") append: String = "credits"
+        @Path("id")                  id      : Int,
+        @Query("language")           language: String = "en-US",
+        @Query("append_to_response") append  : String = "credits"
     ): MovieDetail
 
     @GET("tv/{id}")
     suspend fun tvDetail(
-        @Path("id") id: Int,
-        @Query("language") language: String = "en-US",
-        @Query("append_to_response") append: String = "external_ids"
+        @Path("id")                  id      : Int,
+        @Query("language")           language: String = "en-US",
+        @Query("append_to_response") append  : String = "external_ids"
     ): TvDetail
 
     @GET("tv/{id}/season/{season_number}")
     suspend fun seasonDetail(
-        @Path("id") id: Int,
+        @Path("id")            id    : Int,
         @Path("season_number") season: Int,
-        @Query("language") language: String = "en-US"
+        @Query("language")     language: String = "en-US"
     ): TvSeasonDetail
 }
 
 object TmdbApi {
 
     private val client: OkHttpClient by lazy {
-
-        val logging = HttpLoggingInterceptor().apply {
-            level = HttpLoggingInterceptor.Level.NONE
-        }
-
         OkHttpClient.Builder()
             .addInterceptor { chain ->
-
                 val token = ApiKeys.TMDB_BEARER
-
-                require(token.isNotBlank()) {
-                    "TMDB API token is missing. Add TMDB_BEARER_TOKEN to GitHub Secrets."
+                val builder = chain.request().newBuilder()
+                    .addHeader("accept", "application/json")
+                if (token.isNotBlank()) {
+                    builder.addHeader("Authorization", "Bearer $token")
                 }
-
-                val request = chain.request()
-                    .newBuilder()
-                    .addHeader(
-                        "Authorization",
-                        "Bearer $token"
-                    )
-                    .addHeader(
-                        "accept",
-                        "application/json"
-                    )
-                    .build()
-
-                chain.proceed(request)
+                chain.proceed(builder.build())
             }
-            .addInterceptor(logging)
+            .addInterceptor(HttpLoggingInterceptor().apply {
+                level = HttpLoggingInterceptor.Level.NONE
+            })
             .connectTimeout(12, TimeUnit.SECONDS)
             .readTimeout(18, TimeUnit.SECONDS)
             .writeTimeout(18, TimeUnit.SECONDS)
@@ -103,13 +86,10 @@ object TmdbApi {
     }
 
     val service: TmdbService by lazy {
-
         Retrofit.Builder()
             .baseUrl("https://api.themoviedb.org/3/")
             .client(client)
-            .addConverterFactory(
-                GsonConverterFactory.create()
-            )
+            .addConverterFactory(GsonConverterFactory.create())
             .build()
             .create(TmdbService::class.java)
     }
