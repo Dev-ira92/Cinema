@@ -1,12 +1,15 @@
+
 package com.cinema.data
 
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
 import java.io.FileOutputStream
+import java.util.concurrent.TimeUnit
 import java.util.zip.ZipInputStream
 
 object SubtitleDownloader {
@@ -17,9 +20,9 @@ object SubtitleDownloader {
     private val client = OkHttpClient.Builder()
         .followRedirects(true)
         .followSslRedirects(true)
-        .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
-        .readTimeout(45, java.util.concurrent.TimeUnit.SECONDS)
-        .callTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(45, TimeUnit.SECONDS)
+        .callTimeout(60, TimeUnit.SECONDS)
         .build()
 
     suspend fun download(
@@ -112,6 +115,7 @@ object SubtitleDownloader {
                     tempFile.copyTo(destination, overwrite = true)
                     destination
                 }
+
             } finally {
                 tempFile.delete()
             }
@@ -128,15 +132,24 @@ object SubtitleDownloader {
             else -> "https://dl.subdl.com/${clean.removePrefix("/")}"
         }
 
-        val parsed = okhttp3.HttpUrl.toHttpUrlOrNull(normalized)
-            ?: throw IllegalArgumentException("Invalid subtitle URL.")
+        val parsed = normalized.toHttpUrlOrNull()
+            ?: throw IllegalArgumentException(
+                "Invalid subtitle URL."
+            )
 
         if (parsed.scheme != "https" && parsed.scheme != "http") {
-            throw IllegalArgumentException("Unsupported subtitle URL scheme.")
+            throw IllegalArgumentException(
+                "Unsupported subtitle URL scheme."
+            )
         }
 
-        if (parsed.username.isNotEmpty() || parsed.password.isNotEmpty()) {
-            throw IllegalArgumentException("Invalid subtitle URL.")
+        if (
+            parsed.username.isNotEmpty() ||
+            parsed.password.isNotEmpty()
+        ) {
+            throw IllegalArgumentException(
+                "Invalid subtitle URL."
+            )
         }
 
         return parsed.toString()
@@ -156,7 +169,9 @@ object SubtitleDownloader {
     }
 
     private fun hasSrtTimestamp(file: File): Boolean {
-        if (!file.isFile || file.length() == 0L) return false
+        if (!file.isFile || file.length() == 0L) {
+            return false
+        }
 
         val sample = ByteArray(
             minOf(file.length(), 8192L).toInt()
@@ -232,7 +247,10 @@ object SubtitleDownloader {
 
                                 extractedTotal += count
 
-                                if (extractedTotal > MAX_EXTRACTED_BYTES) {
+                                if (
+                                    extractedTotal >
+                                    MAX_EXTRACTED_BYTES
+                                ) {
                                     throw IllegalStateException(
                                         "Extracted subtitle files exceed the size limit."
                                     )
@@ -249,6 +267,7 @@ object SubtitleDownloader {
                         } else {
                             destination.delete()
                         }
+
                     } finally {
                         zip.closeEntry()
                     }
