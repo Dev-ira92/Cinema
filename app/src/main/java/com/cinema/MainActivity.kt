@@ -1,3 +1,4 @@
+
 package com.cinema
 
 import android.net.Uri
@@ -43,10 +44,8 @@ fun CinemaNavigation() {
     ) {
 
         composable("home") {
-
             HomeScreen(
                 onMediaClick = { item: MediaItem ->
-
                     val json = gson.toJson(item)
                     val encodedItem = Uri.encode(json)
 
@@ -61,7 +60,6 @@ fun CinemaNavigation() {
         }
 
         composable("settings") {
-
             SettingsScreen(
                 onBack = {
                     navController.popBackStack()
@@ -91,11 +89,8 @@ fun CinemaNavigation() {
             }.getOrNull()
 
             if (item == null) {
-
                 navController.popBackStack()
-
             } else {
-
                 DetailScreen(
                     item = item,
                     onBack = {
