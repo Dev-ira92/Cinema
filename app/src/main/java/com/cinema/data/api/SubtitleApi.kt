@@ -1,7 +1,9 @@
+
 package com.cinema.data.api
 
 import com.cinema.data.model.SubdlResponse
 import okhttp3.OkHttpClient
+import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.GET
@@ -18,7 +20,7 @@ interface SubdlService {
         @Query("film_name") filmName: String? = null,
         @Query("file_name") fileName: String? = null,
         @Query("year") year: Int? = null,
-        @Query("languages") languages: String = "FA",
+        @Query("languages") languages: String = "EN,FA",
         @Query("type") type: String = "movie",
         @Query("season_number") season: Int? = null,
         @Query("episode_number") episode: Int? = null,
@@ -31,17 +33,29 @@ object SubtitleApi {
 
     const val DOWNLOAD_BASE = "https://dl.subdl.com"
 
+    private val client: OkHttpClient by lazy {
+
+        val logging = HttpLoggingInterceptor().apply {
+            level = HttpLoggingInterceptor.Level.NONE
+        }
+
+        OkHttpClient.Builder()
+            .addInterceptor(logging)
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(20, TimeUnit.SECONDS)
+            .callTimeout(40, TimeUnit.SECONDS)
+            .build()
+    }
+
     val service: SubdlService by lazy {
 
         Retrofit.Builder()
             .baseUrl("https://api.subdl.com/")
-            .client(
-                OkHttpClient.Builder()
-                    .connectTimeout(15, TimeUnit.SECONDS)
-                    .readTimeout(30, TimeUnit.SECONDS)
-                    .build()
+            .client(client)
+            .addConverterFactory(
+                GsonConverterFactory.create()
             )
-            .addConverterFactory(GsonConverterFactory.create())
             .build()
             .create(SubdlService::class.java)
     }
