@@ -61,10 +61,9 @@ fun CinemaNavigation() {
             )
         ) { backStackEntry ->
 
-            val encodedItem =
-                backStackEntry.arguments
-                    ?.getString("itemJson")
-                    .orEmpty()
+            val encodedItem = backStackEntry.arguments
+                ?.getString("itemJson")
+                .orEmpty()
 
             val item = runCatching {
                 gson.fromJson(
@@ -112,20 +111,17 @@ fun CinemaNavigation() {
             )
         ) { backStackEntry ->
 
-            val videoUrl =
-                backStackEntry.arguments
-                    ?.getString("videoUrl")
-                    .orEmpty()
+            val videoUrl = backStackEntry.arguments
+                ?.getString("videoUrl")
+                .orEmpty()
 
-            val title =
-                backStackEntry.arguments
-                    ?.getString("title")
-                    .orEmpty()
+            val title = backStackEntry.arguments
+                ?.getString("title")
+                .orEmpty()
 
-            val subtitleUrl =
-                backStackEntry.arguments
-                    ?.getString("subtitleUrl")
-                    .orEmpty()
+            val subtitleUrl = backStackEntry.arguments
+                ?.getString("subtitleUrl")
+                .orEmpty()
 
             PlayerScreen(
                 videoUrl = videoUrl,
