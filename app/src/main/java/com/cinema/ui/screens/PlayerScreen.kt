@@ -16,10 +16,9 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
-import com.cinema.player.SubtitleDownloader
+import com.cinema.data.SubtitleDownloader
 import com.cinema.player.SubtitlePlayer
 import kotlinx.coroutines.CancellationException
-import java.io.File
 
 @OptIn(UnstableApi::class)
 @Composable
@@ -44,74 +43,82 @@ fun PlayerScreen(
         mutableStateOf("")
     }
 
-    var subtitleFile by remember {
-        mutableStateOf<File?>(null)
-    }
-
-    val player = remember {
+    val player = remember(context) {
         ExoPlayer.Builder(context).build()
     }
 
     DisposableEffect(player) {
+
         onDispose {
             player.release()
         }
     }
 
-    LaunchedEffect(videoUrl, subtitleUrl) {
+    LaunchedEffect(videoUrl, subtitleUrl, player) {
 
         playerError = ""
         subtitleMessage = ""
-        subtitleFile = null
+
+        player.stop()
+        player.clearMediaItems()
 
         if (videoUrl.isBlank()) {
+
             playerError = "آدرس ویدئو وارد نشده است."
             return@LaunchedEffect
         }
 
-        if (!videoUrl.startsWith("https://") &&
-            !videoUrl.startsWith("http://")
-        ) {
+        val validVideoUrl =
+            videoUrl.startsWith("https://", true) ||
+            videoUrl.startsWith("http://", true)
+
+        if (!validVideoUrl) {
+
             playerError = "آدرس ویدئو معتبر نیست."
             return@LaunchedEffect
         }
 
-        loadingSubtitle = subtitleUrl.isNotBlank()
+        var downloadedSubtitleUrl: String? = null
 
         try {
 
-            var downloadedSubtitle: File? = null
-
             if (subtitleUrl.isNotBlank()) {
+
+                loadingSubtitle = true
 
                 try {
 
-                    downloadedSubtitle =
+                    val subtitleFile =
                         SubtitleDownloader.download(
                             context = context,
                             subtitleUrl = subtitleUrl
                         )
 
-                    subtitleFile = downloadedSubtitle
+                    downloadedSubtitleUrl =
+                        Uri.fromFile(subtitleFile).toString()
 
-                    subtitleMessage = "زیرنویس آماده شد."
+                    subtitleMessage = "زیرنویس با موفقیت دریافت شد."
 
                 } catch (e: CancellationException) {
+
                     throw e
+
                 } catch (e: Exception) {
 
                     subtitleMessage =
-                        "دانلود زیرنویس ناموفق بود: ${e.message}"
+                        "دریافت زیرنویس ناموفق بود: ${e.message}"
                 }
+
+                loadingSubtitle = false
             }
 
-            val mediaItem = if (downloadedSubtitle != null) {
+            val mediaItem = if (
+                downloadedSubtitleUrl != null
+            ) {
 
                 SubtitlePlayer.createMediaItem(
                     videoUrl = videoUrl,
-                    subtitleUrl = Uri.fromFile(
-                        downloadedSubtitle
-                    ).toString()
+                    subtitleUrl = downloadedSubtitleUrl
                 )
 
             } else {
@@ -127,6 +134,7 @@ fun PlayerScreen(
 
         } catch (e: CancellationException) {
 
+            player.stop()
             throw e
 
         } catch (e: Exception) {
@@ -146,6 +154,8 @@ fun PlayerScreen(
             .background(Color.Black)
     ) {
 
+        // Header
+
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -157,6 +167,7 @@ fun PlayerScreen(
             TextButton(
                 onClick = onBack
             ) {
+
                 Text(
                     text = "بازگشت",
                     color = Color.White
@@ -173,6 +184,8 @@ fun PlayerScreen(
                 style = MaterialTheme.typography.titleMedium
             )
         }
+
+        // Video player
 
         Box(
             modifier = Modifier
@@ -198,12 +211,17 @@ fun PlayerScreen(
                     factory = { viewContext ->
 
                         PlayerView(viewContext).apply {
-                            this.player = player
+
+                            player = this@PlayerScreen.run {
+                                this@run.player
+                            }
+
                             useController = true
                         }
                     },
 
                     update = { playerView ->
+
                         playerView.player = player
                     }
                 )
@@ -219,6 +237,8 @@ fun PlayerScreen(
                 )
             }
         }
+
+        // Subtitle status
 
         if (subtitleMessage.isNotBlank()) {
 
