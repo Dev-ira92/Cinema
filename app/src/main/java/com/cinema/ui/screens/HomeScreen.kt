@@ -29,6 +29,7 @@ import com.cinema.viewmodel.HomeViewModel
 @Composable
 fun HomeScreen(
     onMediaClick: (MediaItem) -> Unit,
+    onSettingsClick: () -> Unit = {},
     vm: HomeViewModel = viewModel()
 ) {
     val state by vm.state.collectAsState()
@@ -53,6 +54,15 @@ fun HomeScreen(
 
             Spacer(Modifier.weight(1f))
 
+            TextButton(
+                onClick = onSettingsClick
+            ) {
+                Text(
+                    text = "Settings",
+                    color = CinemaPrimary
+                )
+            }
+
             Text(
                 text = "MOVIES & SERIES",
                 color = CinemaMuted,
@@ -67,25 +77,20 @@ fun HomeScreen(
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp),
             placeholder = {
-                Text(
-                    "Search movies and TV shows...",
-                    color = CinemaHint
-                )
+                Text("Search movies and TV shows...")
             },
             leadingIcon = {
                 Icon(
-                    imageVector = Icons.Default.Search,
-                    contentDescription = "Search",
-                    tint = CinemaMuted
+                    Icons.Default.Search,
+                    contentDescription = "Search"
                 )
             },
             trailingIcon = {
                 if (state.query.isNotEmpty()) {
                     IconButton(onClick = vm::clearSearch) {
                         Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "Clear search",
-                            tint = CinemaMuted
+                            Icons.Default.Close,
+                            contentDescription = "Clear"
                         )
                     }
                 }
@@ -94,81 +99,51 @@ fun HomeScreen(
             shape = RoundedCornerShape(16.dp),
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = CinemaPrimary,
-                unfocusedBorderColor = CinemaBorder,
+                unfocusedBorderColor = CinemaCard,
                 focusedTextColor = CinemaText,
-                unfocusedTextColor = CinemaText,
-                cursorColor = CinemaPrimary,
-                focusedContainerColor = CinemaSurface,
-                unfocusedContainerColor = CinemaSurface
+                unfocusedTextColor = CinemaText
             )
         )
 
         when {
-            state.query.trim().length >= 2 -> {
-                SearchContent(
-                    loading = state.searching,
-                    results = state.results,
-                    error = state.error,
-                    onMediaClick = onMediaClick
-                )
-            }
-
-            else -> {
-                HomeContent(
-                    loading = state.loading,
-                    error = state.error,
-                    trending = state.trending,
-                    movies = state.movies,
-                    tvShows = state.tvShows,
-                    onRetry = vm::loadHome,
-                    onMediaClick = onMediaClick
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun SearchContent(
-    loading: Boolean,
-    results: List<MediaItem>,
-    error: String?,
-    onMediaClick: (MediaItem) -> Unit
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 16.dp)
-    ) {
-        when {
-            loading -> {
-                CircularProgressIndicator(
-                    modifier = Modifier.align(Alignment.Center),
-                    color = CinemaPrimary
-                )
-            }
-
-            results.isNotEmpty() -> {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .verticalScroll(rememberScrollState())
-                        .padding(vertical = 16.dp)
-                ) {
-                    Text(
-                        text = "Search results",
-                        color = CinemaText,
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold
-                    )
-
-                    Spacer(Modifier.height(12.dp))
-
-                    results.forEach { item ->
-                        SearchResultRow(
-                            item = item,
-                            onClick = { onMediaClick(item) }
+            state.query.length >= 2 -> {
+                if (state.searching) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(
+                            color = CinemaPrimary
                         )
+                    }
+                } else {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState())
+                            .padding(16.dp)
+                    ) {
+                        Text(
+                            "Search results",
+                            color = CinemaText,
+                            style = MaterialTheme.typography.titleLarge
+                        )
+
+                        Spacer(Modifier.height(16.dp))
+
+                        if (state.results.isEmpty()) {
+                            Text(
+                                "No results found",
+                                color = CinemaMuted
+                            )
+                        }
+
+                        state.results.forEach { item ->
+                            SearchResultRow(
+                                item = item,
+                                onClick = { onMediaClick(item) }
+                            )
+                        }
                     }
                 }
             }
@@ -176,99 +151,48 @@ private fun SearchContent(
             else -> {
                 Column(
                     modifier = Modifier
-                        .align(Alignment.Center)
-                        .padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(bottom = 24.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Search,
-                        contentDescription = null,
-                        tint = CinemaMuted,
-                        modifier = Modifier.size(42.dp)
+                    if (state.loading) {
+                        LinearProgressIndicator(
+                            modifier = Modifier.fillMaxWidth(),
+                            color = CinemaPrimary
+                        )
+                    }
+
+                    if (state.error != null) {
+                        Text(
+                            state.error ?: "",
+                            color = CinemaRed,
+                            modifier = Modifier.padding(16.dp)
+                        )
+
+                        TextButton(onClick = vm::loadHome) {
+                            Text("Try again")
+                        }
+                    }
+
+                    MediaSection(
+                        title = "Trending",
+                        items = state.trending,
+                        onClick = onMediaClick
                     )
 
-                    Spacer(Modifier.height(12.dp))
+                    MediaSection(
+                        title = "Popular Movies",
+                        items = state.movies,
+                        onClick = onMediaClick
+                    )
 
-                    Text(
-                        text = error ?: "No matching titles found.",
-                        color = CinemaMuted
+                    MediaSection(
+                        title = "Popular TV Shows",
+                        items = state.tvShows,
+                        onClick = onMediaClick
                     )
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun HomeContent(
-    loading: Boolean,
-    error: String?,
-    trending: List<MediaItem>,
-    movies: List<MediaItem>,
-    tvShows: List<MediaItem>,
-    onRetry: () -> Unit,
-    onMediaClick: (MediaItem) -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(bottom = 24.dp)
-    ) {
-        if (loading) {
-            LinearProgressIndicator(
-                modifier = Modifier.fillMaxWidth(),
-                color = CinemaPrimary
-            )
-        }
-
-        if (!error.isNullOrBlank()) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp)
-            ) {
-                Text(
-                    text = error,
-                    color = CinemaRed
-                )
-
-                TextButton(onClick = onRetry) {
-                    Text("Try again")
-                }
-            }
-        }
-
-        MediaSection(
-            title = "Trending",
-            items = trending,
-            onClick = onMediaClick
-        )
-
-        MediaSection(
-            title = "Popular Movies",
-            items = movies,
-            onClick = onMediaClick
-        )
-
-        MediaSection(
-            title = "Popular TV Shows",
-            items = tvShows,
-            onClick = onMediaClick
-        )
-
-        if (
-            !loading &&
-            error == null &&
-            trending.isEmpty() &&
-            movies.isEmpty() &&
-            tvShows.isEmpty()
-        ) {
-            Text(
-                text = "No titles are available right now.",
-                color = CinemaMuted,
-                modifier = Modifier.padding(20.dp)
-            )
         }
     }
 }
@@ -279,13 +203,11 @@ private fun MediaSection(
     items: List<MediaItem>,
     onClick: (MediaItem) -> Unit
 ) {
-    if (items.isEmpty()) return
-
     Column(
         modifier = Modifier.padding(top = 22.dp)
     ) {
         Text(
-            text = title,
+            title,
             color = CinemaText,
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold,
@@ -298,10 +220,7 @@ private fun MediaSection(
             contentPadding = PaddingValues(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            items(
-                items = items,
-                key = { "${it.normalizedType}_${it.id}" }
-            ) { item ->
+            items(items) { item ->
                 MediaCard(
                     item = item,
                     onClick = { onClick(item) }
@@ -334,7 +253,7 @@ private fun MediaCard(
         Spacer(Modifier.height(8.dp))
 
         Text(
-            text = item.displayTitle,
+            item.displayTitle,
             color = CinemaText,
             maxLines = 2,
             style = MaterialTheme.typography.bodyMedium,
@@ -342,7 +261,7 @@ private fun MediaCard(
         )
 
         Text(
-            text = "${item.year}  •  ★ ${item.ratingText}",
+            "${item.year}  •  ★ ${item.ratingText}",
             color = CinemaMuted,
             style = MaterialTheme.typography.labelSmall
         )
@@ -376,7 +295,7 @@ private fun SearchResultRow(
                 .padding(start = 12.dp)
         ) {
             Text(
-                text = item.displayTitle,
+                item.displayTitle,
                 color = CinemaText,
                 fontWeight = FontWeight.Bold
             )
@@ -384,13 +303,13 @@ private fun SearchResultRow(
             Spacer(Modifier.height(5.dp))
 
             Text(
-                text = "${item.year} • ${item.normalizedType.uppercase()}",
+                "${item.year} • ${item.normalizedType.uppercase()}",
                 color = CinemaMuted,
                 style = MaterialTheme.typography.bodySmall
             )
 
             Text(
-                text = "★ ${item.ratingText}",
+                "★ ${item.ratingText}",
                 color = CinemaGold,
                 style = MaterialTheme.typography.bodySmall
             )
