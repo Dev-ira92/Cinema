@@ -2,7 +2,6 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
-    alias(libs.plugins.kotlin.compose)
 }
 
 android {
@@ -17,11 +16,17 @@ android {
         versionCode = 1
         versionName = "1.0"
 
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        testInstrumentationRunner =
+            "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildFeatures {
         compose = true
+    }
+
+    // Kotlin 1.9.24 compatible Compose Compiler
+    composeOptions {
+        kotlinCompilerExtensionVersion = "1.5.14"
     }
 
     compileOptions {
@@ -44,52 +49,73 @@ dependencies {
 
     // Android Core
     implementation(libs.androidx.core.ktx)
-    implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.lifecycle.runtime)
     implementation(libs.androidx.activity.compose)
 
     // Jetpack Compose
-    implementation(platform(libs.androidx.compose.bom))
-    implementation(libs.androidx.ui)
-    implementation(libs.androidx.ui.graphics)
-    implementation(libs.androidx.ui.tooling.preview)
-    implementation(libs.androidx.material3)
+    implementation(platform(libs.compose.bom))
+    implementation(libs.compose.ui)
+    implementation(libs.compose.ui.graphics)
+    implementation(libs.compose.ui.tooling.preview)
+    implementation(libs.compose.material3)
 
     // ViewModel
-    implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.lifecycle.viewmodel)
 
     // Navigation
-    implementation("androidx.navigation:navigation-compose:2.8.5")
+    implementation(libs.navigation.compose)
 
     // JSON
-    implementation("com.google.code.gson:gson:2.11.0")
+    implementation(libs.gson)
 
     // Retrofit
     implementation(libs.retrofit)
-    implementation(libs.retrofit.converter.gson)
+    implementation(libs.retrofit.gson)
+
+    // OkHttp
+    implementation(libs.okhttp)
     implementation(libs.okhttp.logging)
 
     // Coroutines
-    implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.coroutines.android)
 
-    // Security
-    implementation(libs.androidx.security.crypto)
+    // Encrypted preferences
+    implementation(libs.security.crypto)
 
     // Media3 Player
-    implementation(libs.androidx.media3.exoplayer)
-    implementation(libs.androidx.media3.ui)
-    implementation(libs.androidx.media3.common)
+    implementation(libs.media3.exoplayer)
+    implementation(libs.media3.ui)
+    implementation("androidx.media3:media3-common:1.3.1")
 
-    // Coil Image Loading
+    // Coil
     implementation(libs.coil.compose)
 
-    // Debug
-    debugImplementation(libs.androidx.ui.tooling)
+    // Debug tools
+    debugImplementation(
+        "androidx.compose.ui:ui-tooling"
+    )
 
-    // Tests
-    testImplementation(libs.junit)
-    androidTestImplementation(libs.androidx.junit)
-    androidTestImplementation(libs.androidx.espresso.core)
-    androidTestImplementation(platform(libs.androidx.compose.bom))
-    androidTestImplementation(libs.androidx.ui.test.junit4)
-    debugImplementation(libs.androidx.ui.test.manifest)
+    debugImplementation(
+        "androidx.compose.ui:ui-test-manifest"
+    )
+
+    // Unit tests
+    testImplementation("junit:junit:4.13.2")
+
+    // Android tests
+    androidTestImplementation(
+        "androidx.test.ext:junit:1.2.1"
+    )
+
+    androidTestImplementation(
+        "androidx.test.espresso:espresso-core:3.6.1"
+    )
+
+    androidTestImplementation(
+        platform(libs.compose.bom)
+    )
+
+    androidTestImplementation(
+        "androidx.compose.ui:ui-test-junit4"
+    )
 }
