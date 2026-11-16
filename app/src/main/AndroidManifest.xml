@@ -8,9 +8,10 @@
     <application
         android:allowBackup="false"
         android:usesCleartextTraffic="false"
+        android:networkSecurityConfig="@xml/network_security"
         android:label="Cinema"
         android:supportsRtl="true"
-        android:theme="@android:style/Theme.Material.Light.NoActionBar">
+        android:theme="@style/Theme.Cinema">
 
         <activity
             android:name=".MainActivity"
