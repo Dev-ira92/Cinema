@@ -4,6 +4,11 @@ plugins {
     alias(libs.plugins.kotlin.android)
 }
 
+val tmdbBearerToken = providers.gradleProperty("TMDB_BEARER_TOKEN")
+    .orElse(providers.environmentVariable("TMDB_BEARER_TOKEN"))
+    .orElse("")
+    .get()
+
 android {
     namespace = "com.cinema"
     compileSdk = 35
@@ -18,13 +23,19 @@ android {
 
         testInstrumentationRunner =
             "androidx.test.runner.AndroidJUnitRunner"
+
+        buildConfigField(
+            "String",
+            "TMDB_BEARER_TOKEN",
+            "\"${tmdbBearerToken.replace("\\", "\\\\").replace("\"", "\\\"")}\""
+        )
     }
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
-    // Kotlin 1.9.24 compatible Compose Compiler
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.14"
     }
@@ -84,6 +95,7 @@ dependencies {
 
     // Media3 Player
     implementation(libs.media3.exoplayer)
+    implementation(libs.media3.exoplayer.hls)
     implementation(libs.media3.ui)
     implementation("androidx.media3:media3-common:1.3.1")
 
