@@ -1,14 +1,20 @@
 
 package com.cinema.data.api
 
-/**
- * API credentials used by Cinema.
- */
+import com.cinema.BuildConfig
+
 object ApiKeys {
 
-    const val TMDB_BEARER: String =
-        "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJiODY4MmVhMDg3YzI2OTliYTFlYjljYWFiMDhkOTA3NyIsIm5iZiI6MTc5NDgyNjQ3Ni45MDcsInN1YiI6IjZhZmFlMGVjMWJmODI2YjkyYjI3Mzk3MiIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.NVGXNqTFTxjkF8n-cbNrEdjWM6hOPdBba5ZpTlz7AwI"
+    /**
+     * TMDB Bearer token is supplied through a Gradle property
+     * or the TMDB_BEARER_TOKEN environment variable.
+     */
+    val TMDB_BEARER: String
+        get() = BuildConfig.TMDB_BEARER_TOKEN.trim()
 
-    const val SUBDL: String =
-        "SUBDL_API_KEY"
+    /**
+     * SubDL key must be entered by the user in the app.
+     * Never put a real personal key in source code.
+     */
+    const val SUBDL: String = ""
 }
