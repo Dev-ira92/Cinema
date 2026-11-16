@@ -1,4 +1,3 @@
-
 package com.cinema.viewmodel
 
 import android.content.Context
@@ -14,6 +13,7 @@ import com.cinema.data.model.TvDetail
 import com.cinema.data.model.TvEpisode
 import com.cinema.data.model.TvSeasonDetail
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -35,55 +35,42 @@ data class DetailUiState(
 class DetailViewModel : ViewModel() {
 
     private val _state = MutableStateFlow(DetailUiState())
-
-    val state: StateFlow<DetailUiState> =
-        _state.asStateFlow()
+    val state: StateFlow<DetailUiState> = _state.asStateFlow()
 
     private var currentItem: MediaItem? = null
-
-    // --------------------------------------------------
-    // Load movie or TV details
-    // --------------------------------------------------
+    private var detailJob: Job? = null
+    private var subtitleJob: Job? = null
 
     fun load(item: MediaItem) {
-
         currentItem = item
+        detailJob?.cancel()
+        subtitleJob?.cancel()
 
-        viewModelScope.launch {
-
+        detailJob = viewModelScope.launch {
             _state.value = DetailUiState(
                 loading = true,
                 selectedSeason = 1
             )
 
             try {
-
                 if (item.normalizedType == "movie") {
-
-                    val movie =
-                        TmdbApi.service.movieDetail(item.id)
+                    val movie = TmdbApi.service.movieDetail(item.id)
 
                     _state.value = DetailUiState(
                         loading = false,
                         movie = movie
                     )
-
                 } else {
-
-                    val tv =
-                        TmdbApi.service.tvDetail(item.id)
+                    val tv = TmdbApi.service.tvDetail(item.id)
 
                     val firstSeason = tv.seasons
-                        .firstOrNull {
-                            it.seasonNumber > 0
-                        }
+                        .firstOrNull { it.seasonNumber > 0 }
                         ?.seasonNumber ?: 1
 
-                    val season =
-                        TmdbApi.service.seasonDetail(
-                            item.id,
-                            firstSeason
-                        )
+                    val season = TmdbApi.service.seasonDetail(
+                        item.id,
+                        firstSeason
+                    )
 
                     _state.value = DetailUiState(
                         loading = false,
@@ -94,34 +81,27 @@ class DetailViewModel : ViewModel() {
                 }
 
             } catch (e: CancellationException) {
-
                 throw e
 
             } catch (e: Exception) {
-
                 _state.value = _state.value.copy(
                     loading = false,
-                    error = e.message
-                        ?: "دریافت اطلاعات ناموفق بود"
+                    error = "Unable to load title details. Please try again."
                 )
             }
         }
     }
 
-    // --------------------------------------------------
-    // Select TV season
-    // --------------------------------------------------
-
     fun selectSeason(seasonNumber: Int) {
-
         val item = currentItem ?: return
 
         if (item.normalizedType != "tv") return
-
         if (seasonNumber < 0) return
 
-        viewModelScope.launch {
+        detailJob?.cancel()
+        subtitleJob?.cancel()
 
+        detailJob = viewModelScope.launch {
             _state.value = _state.value.copy(
                 loading = true,
                 selectedSeason = seasonNumber,
@@ -132,12 +112,10 @@ class DetailViewModel : ViewModel() {
             )
 
             try {
-
-                val season =
-                    TmdbApi.service.seasonDetail(
-                        item.id,
-                        seasonNumber
-                    )
+                val season = TmdbApi.service.seasonDetail(
+                    item.id,
+                    seasonNumber
+                )
 
                 _state.value = _state.value.copy(
                     loading = false,
@@ -145,67 +123,48 @@ class DetailViewModel : ViewModel() {
                 )
 
             } catch (e: CancellationException) {
-
                 throw e
 
             } catch (e: Exception) {
-
                 _state.value = _state.value.copy(
                     loading = false,
-                    error = e.message
-                        ?: "دریافت قسمت‌ها ناموفق بود"
+                    error = "Unable to load episodes for this season."
                 )
             }
         }
     }
 
-    // --------------------------------------------------
-    // Select TV episode
-    // --------------------------------------------------
-
     fun selectEpisode(episode: TvEpisode) {
+        subtitleJob?.cancel()
 
         _state.value = _state.value.copy(
             selectedEpisode = episode,
             subtitles = emptyList(),
-            subtitleError = null
+            subtitleError = null,
+            subtitleLoading = false
         )
     }
-
-    // --------------------------------------------------
-    // Search subtitles
-    // --------------------------------------------------
 
     fun searchSubtitles(
         context: Context,
         customTitle: String = ""
     ) {
-
         val item = currentItem ?: return
-
         val current = _state.value
 
         val apiKey = try {
-
             SubtitleKeyStore.get(context)
-
         } catch (e: Exception) {
-
             _state.value = current.copy(
-                subtitleError =
-                    "دریافت کلید SubDL ناموفق بود: ${e.message}"
+                subtitleError = "Unable to access the saved SubDL API key."
             )
-
             return
         }
 
         if (apiKey.isBlank()) {
-
             _state.value = current.copy(
-                subtitleError =
-                    "ابتدا کلید SubDL را وارد کنید"
+                subtitleError = "Please enter your SubDL API key in Settings."
             )
-
             return
         }
 
@@ -213,17 +172,15 @@ class DetailViewModel : ViewModel() {
             item.normalizedType == "tv" &&
             current.selectedEpisode == null
         ) {
-
             _state.value = current.copy(
-                subtitleError =
-                    "ابتدا فصل و قسمت موردنظر را انتخاب کنید"
+                subtitleError = "Please select a season and episode first."
             )
-
             return
         }
 
-        viewModelScope.launch {
+        subtitleJob?.cancel()
 
+        subtitleJob = viewModelScope.launch {
             _state.value = _state.value.copy(
                 subtitleLoading = true,
                 subtitles = emptyList(),
@@ -231,106 +188,88 @@ class DetailViewModel : ViewModel() {
             )
 
             try {
+                val title = customTitle.trim().ifBlank {
+                    item.displayTitle
+                }
 
-                val title = customTitle
-                    .trim()
-                    .ifBlank {
-                        item.displayTitle
-                    }
+                val episode = current.selectedEpisode
 
-                val episode =
-                    current.selectedEpisode
-
-                // Prefer IMDb ID when available.
-                val imdbId = if (
-                    item.normalizedType == "movie"
-                ) {
+                val imdbId = if (item.normalizedType == "movie") {
                     current.movie?.imdbId
                 } else {
                     current.tv?.imdbId
                 }
 
-                // Prefer the year from the detailed TMDB response.
-                val year = if (
-                    item.normalizedType == "movie"
-                ) {
-                    current.movie?.year
-                        ?.toIntOrNull()
+                val year = if (item.normalizedType == "movie") {
+                    current.movie?.year?.toIntOrNull()
                         ?: item.year.toIntOrNull()
                 } else {
-                    current.tv?.year
-                        ?.toIntOrNull()
+                    current.tv?.year?.toIntOrNull()
                         ?: item.year.toIntOrNull()
                 }
 
-                val response =
-                    SubtitleApi.service.search(
+                val response = SubtitleApi.service.search(
+                    key = apiKey,
+                    imdbId = imdbId,
+                    tmdbId = item.id,
+                    filmName = title,
+                    year = year,
+                    languages = "FA,EN",
+                    type = item.normalizedType,
+                    season = episode?.seasonNumber,
+                    episode = episode?.episodeNumber,
+                    perPage = 30,
+                    unpack = 1
+                )
 
-                        key = apiKey,
-
-                        imdbId = imdbId,
-
-                        tmdbId = item.id,
-
-                        filmName = title,
-
-                        year = year,
-
-                        languages = "FA,EN",
-
-                        type = item.normalizedType,
-
-                        season = episode?.seasonNumber,
-
-                        episode = episode?.episodeNumber,
-
-                        perPage = 30,
-
-                        unpack = 1
-                    )
-
-                val results =
-                    response.subtitles.distinctBy {
-                        it.url
-                    }
+                val results = response.subtitles
+                    .distinctBy { it.url }
+                    .filter { it.url.isNotBlank() }
 
                 _state.value = _state.value.copy(
                     subtitleLoading = false,
                     subtitles = results,
-                    subtitleError = if (
-                        results.isEmpty()
-                    ) {
-                        "زیرنویسی پیدا نشد. نام فیلم یا نسخه انتشار را تغییر دهید."
+                    subtitleError = if (results.isEmpty()) {
+                        "No subtitles were found. Try another title or release name."
                     } else {
                         null
                     }
                 )
 
             } catch (e: CancellationException) {
-
                 throw e
 
-            } catch (e: Exception) {
+            } catch (e: retrofit2.HttpException) {
+                val message = when (e.code()) {
+                    401, 403 -> "SubDL rejected the API key. Check your key and account access."
+                    404 -> "The subtitle service endpoint was not found."
+                    429 -> "Too many subtitle searches. Please wait and try again."
+                    else -> "Subtitle search failed: HTTP ${e.code()}."
+                }
 
                 _state.value = _state.value.copy(
                     subtitleLoading = false,
                     subtitles = emptyList(),
-                    subtitleError = e.message
-                        ?: "خطا در جست‌وجوی زیرنویس"
+                    subtitleError = message
+                )
+
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    subtitleLoading = false,
+                    subtitles = emptyList(),
+                    subtitleError = "Unable to search subtitles. Check your connection and try again."
                 )
             }
         }
     }
 
-    // --------------------------------------------------
-    // Clear subtitle results
-    // --------------------------------------------------
-
     fun clearSubtitles() {
+        subtitleJob?.cancel()
 
         _state.value = _state.value.copy(
             subtitles = emptyList(),
-            subtitleError = null
+            subtitleError = null,
+            subtitleLoading = false
         )
     }
 }
