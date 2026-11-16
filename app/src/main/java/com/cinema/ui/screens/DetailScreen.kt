@@ -130,11 +130,11 @@ fun DetailScreen(
             }
 
             // Detail error
-            if (state.error.isNotBlank()) {
+            if (!state.error.isNullOrBlank()) {
 
                 item {
                     Text(
-                        text = state.error,
+                        text = state.error.orEmpty(),
                         color = MaterialTheme.colorScheme.error
                     )
                 }
@@ -167,7 +167,8 @@ fun DetailScreen(
 
                 Button(
                     onClick = {
-                        if (videoUrl.startsWith("https://") ||
+                        if (
+                            videoUrl.startsWith("https://") ||
                             videoUrl.startsWith("http://")
                         ) {
                             onPlay(
@@ -213,6 +214,7 @@ fun DetailScreen(
                 Button(
                     onClick = {
                         selectedSubtitle = null
+
                         vm.searchSubtitles(
                             context = context,
                             customTitle = customSubtitleTitle
@@ -232,9 +234,9 @@ fun DetailScreen(
                     }
                 }
 
-                if (state.subtitleError.isNotBlank()) {
+                if (!state.subtitleError.isNullOrBlank()) {
                     Text(
-                        text = state.subtitleError,
+                        text = state.subtitleError.orEmpty(),
                         color = MaterialTheme.colorScheme.error
                     )
                 }
