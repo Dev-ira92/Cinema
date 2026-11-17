@@ -42,11 +42,12 @@ class HomeViewModel : ViewModel() {
         loadHome()
     }
 
-    // ---------------------------------------------------------
+    // -----------------------------------------------------
     // HOME CATALOG - VIDAPI
-    // ---------------------------------------------------------
+    // -----------------------------------------------------
 
     fun loadHome() {
+
         if (homeJob?.isActive == true) return
 
         homeJob = viewModelScope.launch {
@@ -57,6 +58,7 @@ class HomeViewModel : ViewModel() {
             )
 
             try {
+
                 val data = coroutineScope {
 
                     val moviesRequest = async {
@@ -76,11 +78,11 @@ class HomeViewModel : ViewModel() {
                 val movies = data.first.items
                     .mapNotNull { item ->
 
-                        val tmdbId = item.tmdbId?.toIntOrNull()
+                        val numericId = item.tmdbId?.toIntOrNull()
                             ?: return@mapNotNull null
 
                         MediaItem(
-                            id = tmdbId,
+                            id = numericId,
                             mediaType = "movie",
                             title = item.title,
                             releaseDate = item.year,
@@ -95,11 +97,11 @@ class HomeViewModel : ViewModel() {
                 val tvShows = data.second.items
                     .mapNotNull { item ->
 
-                        val tmdbId = item.tmdbId?.toIntOrNull()
+                        val numericId = item.tmdbId?.toIntOrNull()
                             ?: return@mapNotNull null
 
                         MediaItem(
-                            id = tmdbId,
+                            id = numericId,
                             mediaType = "tv",
                             name = item.title,
                             firstAirDate = item.year,
@@ -111,17 +113,20 @@ class HomeViewModel : ViewModel() {
                     }
                     .distinctBy { it.id }
 
-                val recentlyAdded = (movies + tvShows)
-                    .distinctBy { "${it.normalizedType}:${it.id}" }
-                    .sortedByDescending { it.popularity }
-                    .take(24)
+                val recentlyAdded = (
+                    movies.take(12) + tvShows.take(12)
+                ).distinctBy {
+                    "${it.normalizedType}:${it.id}"
+                }
 
                 _state.value = _state.value.copy(
                     loading = false,
                     movies = movies,
                     tvShows = tvShows,
                     trending = recentlyAdded,
-                    error = if (movies.isEmpty() && tvShows.isEmpty()) {
+                    error = if (
+                        movies.isEmpty() && tvShows.isEmpty()
+                    ) {
                         "VidAPI returned no catalog items."
                     } else {
                         null
@@ -129,30 +134,36 @@ class HomeViewModel : ViewModel() {
                 )
 
             } catch (e: CancellationException) {
+
                 throw e
 
             } catch (e: HttpException) {
+
+                val message = when (e.code()) {
+
+                    401, 403 ->
+                        "VidAPI access was denied. Check service configuration."
+
+                    404 ->
+                        "VidAPI catalog endpoint was not found."
+
+                    429 ->
+                        "Too many requests. Please try again later."
+
+                    in 500..599 ->
+                        "VidAPI is temporarily unavailable."
+
+                    else ->
+                        "Unable to load catalog. HTTP ${e.code()}."
+                }
+
                 _state.value = _state.value.copy(
                     loading = false,
-                    error = when (e.code()) {
-                        403 ->
-                            "VidAPI access was denied. Check the service configuration."
-
-                        404 ->
-                            "VidAPI catalog endpoint was not found."
-
-                        429 ->
-                            "Too many requests. Please try again later."
-
-                        in 500..599 ->
-                            "VidAPI is temporarily unavailable."
-
-                        else ->
-                            "Unable to load catalog. HTTP ${e.code()}."
-                    }
+                    error = message
                 )
 
             } catch (e: Exception) {
+
                 _state.value = _state.value.copy(
                     loading = false,
                     error = "Unable to load movies and TV shows. Check your internet connection."
@@ -161,13 +172,14 @@ class HomeViewModel : ViewModel() {
         }
     }
 
-    // ---------------------------------------------------------
-    // SEARCH - TEMPORARILY STILL TMDB
-    // ---------------------------------------------------------
+    // -----------------------------------------------------
+    // SEARCH - TEMPORARILY TMDB
+    // -----------------------------------------------------
 
     fun onQueryChanged(value: String) {
 
         searchRequestId++
+
         val currentRequestId = searchRequestId
 
         searchJob?.cancel()
@@ -192,6 +204,7 @@ class HomeViewModel : ViewModel() {
         searchJob = viewModelScope.launch {
 
             try {
+
                 delay(350)
 
                 val response = TmdbApi.service.searchMulti(
@@ -208,8 +221,10 @@ class HomeViewModel : ViewModel() {
                 val filtered = response.results
                     .filter {
                         it.id > 0 &&
-                            (it.mediaType == "movie" ||
-                                it.mediaType == "tv")
+                            (
+                                it.mediaType == "movie" ||
+                                    it.mediaType == "tv"
+                            )
                     }
                     .distinctBy {
                         "${it.mediaType}:${it.id}"
@@ -226,6 +241,7 @@ class HomeViewModel : ViewModel() {
                 )
 
             } catch (e: CancellationException) {
+
                 throw e
 
             } catch (e: HttpException) {
@@ -235,6 +251,7 @@ class HomeViewModel : ViewModel() {
                 }
 
                 val message = when (e.code()) {
+
                     401, 403 ->
                         "TMDB search is unavailable. Search migration is not complete yet."
 
@@ -272,8 +289,14 @@ class HomeViewModel : ViewModel() {
         }
     }
 
+    // -----------------------------------------------------
+    // CLEAR SEARCH
+    // -----------------------------------------------------
+
     fun clearSearch() {
+
         searchRequestId++
+
         searchJob?.cancel()
         searchJob = null
 
