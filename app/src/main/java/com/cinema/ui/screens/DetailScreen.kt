@@ -1,232 +1,231 @@
 
 package com.cinema.ui.screens
 
-import android.graphics.Color
-import android.net.Uri
-import android.webkit.WebChromeClient
-import android.webkit.WebResourceError
-import android.webkit.WebResourceRequest
-import android.webkit.WebSettings
-import android.webkit.WebView
-import android.webkit.WebViewClient
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
-import android.view.ViewGroup
+import coil.compose.AsyncImage
+import com.cinema.data.model.MediaItem
 import com.cinema.ui.theme.CinemaBackground
+import com.cinema.ui.theme.CinemaMuted
+import com.cinema.ui.theme.CinemaPrimary
 import com.cinema.ui.theme.CinemaText
 
 @Composable
-fun PlayerScreen(
-    videoUrl: String,
-    title: String,
-    subtitleUrl: String?,
-    onBack: () -> Unit
+fun DetailScreen(
+    item: MediaItem,
+    onBack: () -> Unit,
+    onPlay: (String, String, String?) -> Unit
 ) {
-    var loading by remember {
-        mutableStateOf(true)
+    var season by remember(item.id) {
+        mutableStateOf("1")
     }
 
-    var error by remember {
-        mutableStateOf<String?>(null)
+    var episode by remember(item.id) {
+        mutableStateOf("1")
     }
 
-    val embedUrl = remember(videoUrl, subtitleUrl) {
-        buildVidApiUrl(videoUrl, subtitleUrl)
-    }
+    val isTv = item.normalizedType == "tv"
+    val imdbId = item.imdbId.orEmpty().trim()
 
-    val webView = remember {
-        WebView(androidx.compose.ui.platform.LocalContext.current)
-    }
+    val validImdbId = imdbId.matches(
+        Regex("^tt[0-9]+$")
+    )
 
-    DisposableEffect(webView, embedUrl) {
+    val seasonNumber = season.toIntOrNull()
+    val episodeNumber = episode.toIntOrNull()
 
-        webView.settings.apply {
-            javaScriptEnabled = true
-            domStorageEnabled = true
-            mediaPlaybackRequiresUserGesture = false
-            allowFileAccess = false
-            allowContentAccess = false
-            mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
-            javaScriptCanOpenWindowsAutomatically = false
-            setSupportMultipleWindows(false)
-        }
+    val validEpisodeSelection =
+        !isTv || (
+            seasonNumber != null &&
+            episodeNumber != null &&
+            seasonNumber > 0 &&
+            episodeNumber > 0
+        )
 
-        webView.setBackgroundColor(Color.BLACK)
+    val canPlay = validImdbId && validEpisodeSelection
 
-        webView.webChromeClient = WebChromeClient()
-
-        webView.webViewClient = object : WebViewClient() {
-
-            override fun onPageStarted(
-                view: WebView?,
-                url: String?,
-                favicon: android.graphics.Bitmap?
-            ) {
-                loading = true
-                error = null
-            }
-
-            override fun onPageFinished(
-                view: WebView?,
-                url: String?
-            ) {
-                loading = false
-            }
-
-            override fun onReceivedError(
-                view: WebView?,
-                request: WebResourceRequest?,
-                errorInfo: WebResourceError?
-            ) {
-                if (request?.isForMainFrame == true) {
-                    loading = false
-                    error = "Unable to load VidAPI player. Check your internet connection."
-                }
-            }
-        }
-
-        if (embedUrl != null) {
-            webView.tag = embedUrl
-            webView.loadUrl(embedUrl)
+    val embedUrl = if (canPlay) {
+        if (isTv) {
+            "https://vaplayer.ru/embed/tv/$imdbId/$seasonNumber/$episodeNumber"
         } else {
-            loading = false
-            error = "Invalid VidAPI embed URL."
+            "https://vaplayer.ru/embed/movie/$imdbId"
         }
-
-        onDispose {
-            webView.stopLoading()
-        }
-    }
-
-    DisposableEffect(webView) {
-        onDispose {
-            webView.stopLoading()
-            webView.loadUrl("about:blank")
-            webView.destroy()
-        }
+    } else {
+        null
     }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(CinemaBackground)
-            .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-
-        Button(
-            onClick = onBack,
-            modifier = Modifier.fillMaxWidth()
+        TextButton(
+            onClick = onBack
         ) {
-            Text("Back")
+            Text(
+                text = "← Back",
+                color = CinemaPrimary
+            )
         }
 
-        Text(
-            text = title,
-            color = CinemaText,
-            style = MaterialTheme.typography.titleLarge
-        )
-
-        Box(
+        AsyncImage(
+            model = item.backdropUrl ?: item.posterUrl,
+            contentDescription = item.displayTitle,
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f)
-                .background(androidx.compose.ui.graphics.Color.Black)
+                .height(220.dp)
+                .clip(RoundedCornerShape(16.dp)),
+            contentScale = ContentScale.Crop
+        )
+
+        Text(
+            text = item.displayTitle,
+            color = CinemaText,
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold
+        )
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically
         ) {
+            Text(
+                text = if (isTv) "TV Series" else "Movie",
+                color = CinemaPrimary
+            )
 
-            if (embedUrl != null) {
-                AndroidView(
-                    factory = {
-                        (webView.parent as? ViewGroup)?.removeView(webView)
-                        webView
-                    },
-                    modifier = Modifier.fillMaxSize()
-                )
-            }
+            Spacer(modifier = Modifier.width(16.dp))
 
-            if (loading) {
-                CircularProgressIndicator()
-            }
-
-            error?.let { message ->
+            if (item.year.isNotBlank()) {
                 Text(
-                    text = message,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(16.dp)
+                    text = item.year,
+                    color = CinemaMuted
                 )
             }
+
+            Spacer(modifier = Modifier.width(16.dp))
+
+            Text(
+                text = "★ ${item.ratingText}",
+                color = CinemaPrimary
+            )
+        }
+
+        if (item.overview.isNotBlank()) {
+            Text(
+                text = "Overview",
+                color = CinemaPrimary,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+
+            Text(
+                text = item.overview,
+                color = CinemaText,
+                style = MaterialTheme.typography.bodyMedium
+            )
+        }
+
+        if (isTv) {
+            Text(
+                text = "Select episode",
+                color = CinemaPrimary,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedTextField(
+                    value = season,
+                    onValueChange = {
+                        season = it.filter { char -> char.isDigit() }.take(3)
+                    },
+                    modifier = Modifier.weight(1f),
+                    label = { Text("Season") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Number
+                    )
+                )
+
+                OutlinedTextField(
+                    value = episode,
+                    onValueChange = {
+                        episode = it.filter { char -> char.isDigit() }.take(3)
+                    },
+                    modifier = Modifier.weight(1f),
+                    label = { Text("Episode") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Number
+                    )
+                )
+            }
+        }
+
+        if (!validImdbId) {
+            Text(
+                text = "IMDb ID is not available for this title. Playback cannot start.",
+                color = MaterialTheme.colorScheme.error
+            )
+        } else if (!validEpisodeSelection) {
+            Text(
+                text = "Enter a valid season and episode number.",
+                color = MaterialTheme.colorScheme.error
+            )
+        }
+
+        Button(
+            onClick = {
+                embedUrl?.let {
+                    onPlay(it, item.displayTitle, null)
+                }
+            },
+            enabled = canPlay,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Play")
         }
 
         Text(
             text = "Powered by VidAPI",
-            color = CinemaText,
+            color = CinemaMuted,
             style = MaterialTheme.typography.bodySmall
         )
-
-        Spacer(modifier = Modifier.height(4.dp))
-    }
-}
-
-private fun buildVidApiUrl(
-    videoUrl: String,
-    subtitleUrl: String?
-): String? {
-
-    return try {
-
-        val uri = Uri.parse(videoUrl.trim())
-
-        if (uri.scheme != "https") {
-            return null
-        }
-
-        if (uri.host != "vaplayer.ru") {
-            return null
-        }
-
-        val path = uri.path.orEmpty()
-
-        val validPath =
-            path.startsWith("/embed/movie/") ||
-            path.startsWith("/embed/tv/") ||
-            path == "/embed/movie" ||
-            path == "/embed/tv"
-
-        if (!validPath) {
-            return null
-        }
-
-        val builder = uri.buildUpon()
-
-        if (!subtitleUrl.isNullOrBlank()) {
-            builder
-                .appendQueryParameter("sub_url", subtitleUrl)
-                .appendQueryParameter("sub_default", "true")
-        }
-
-        builder.build().toString()
-
-    } catch (_: Exception) {
-        null
     }
 }
