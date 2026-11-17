@@ -3,6 +3,7 @@ package com.cinema.ui.screens
 
 import android.graphics.Color
 import android.net.Uri
+import android.view.ViewGroup
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
@@ -29,9 +30,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import android.view.ViewGroup
 import com.cinema.ui.theme.CinemaBackground
 import com.cinema.ui.theme.CinemaText
 
@@ -42,24 +43,20 @@ fun PlayerScreen(
     subtitleUrl: String?,
     onBack: () -> Unit
 ) {
-    var loading by remember {
-        mutableStateOf(true)
-    }
+    var loading by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf<String?>(null) }
 
-    var error by remember {
-        mutableStateOf<String?>(null)
-    }
+    val context = LocalContext.current
 
     val embedUrl = remember(videoUrl, subtitleUrl) {
         buildVidApiUrl(videoUrl, subtitleUrl)
     }
 
-    val webView = remember {
-        WebView(androidx.compose.ui.platform.LocalContext.current)
+    val webView = remember(context) {
+        WebView(context)
     }
 
     DisposableEffect(webView, embedUrl) {
-
         webView.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
@@ -72,11 +69,9 @@ fun PlayerScreen(
         }
 
         webView.setBackgroundColor(Color.BLACK)
-
         webView.webChromeClient = WebChromeClient()
 
         webView.webViewClient = object : WebViewClient() {
-
             override fun onPageStarted(
                 view: WebView?,
                 url: String?,
@@ -106,7 +101,6 @@ fun PlayerScreen(
         }
 
         if (embedUrl != null) {
-            webView.tag = embedUrl
             webView.loadUrl(embedUrl)
         } else {
             loading = false
@@ -133,7 +127,6 @@ fun PlayerScreen(
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-
         Button(
             onClick = onBack,
             modifier = Modifier.fillMaxWidth()
@@ -153,7 +146,6 @@ fun PlayerScreen(
                 .weight(1f)
                 .background(androidx.compose.ui.graphics.Color.Black)
         ) {
-
             if (embedUrl != null) {
                 AndroidView(
                     factory = {
@@ -191,18 +183,11 @@ private fun buildVidApiUrl(
     videoUrl: String,
     subtitleUrl: String?
 ): String? {
-
     return try {
-
         val uri = Uri.parse(videoUrl.trim())
 
-        if (uri.scheme != "https") {
-            return null
-        }
-
-        if (uri.host != "vaplayer.ru") {
-            return null
-        }
+        if (uri.scheme != "https") return null
+        if (uri.host != "vaplayer.ru") return null
 
         val path = uri.path.orEmpty()
 
@@ -212,9 +197,7 @@ private fun buildVidApiUrl(
             path == "/embed/movie" ||
             path == "/embed/tv"
 
-        if (!validPath) {
-            return null
-        }
+        if (!validPath) return null
 
         val builder = uri.buildUpon()
 
@@ -225,7 +208,6 @@ private fun buildVidApiUrl(
         }
 
         builder.build().toString()
-
     } catch (_: Exception) {
         null
     }
