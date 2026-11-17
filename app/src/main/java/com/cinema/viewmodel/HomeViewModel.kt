@@ -1,0 +1,148 @@
+package com.cinema.viewmodel
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.cinema.data.api.ImdbSuggestApi
+import com.cinema.data.api.VidApiClient
+import com.cinema.data.model.MediaItem
+import com.cinema.data.model.toMediaItem
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import retrofit2.HttpException
+import java.io.IOException
+
+enum class HomeTab { MOVIES, TV }
+
+data class FeedState(
+    val items: List<MediaItem> = emptyList(),
+    val page: Int = 0,
+    val totalPages: Int = 0,
+    val loading: Boolean = false,
+    val error: String? = null
+) {
+    /** totalPages == 0 means "unknown" (never treated as the end). */
+    val endReached: Boolean
+        get() = totalPages > 0 && page >= totalPages
+}
+
+data class HomeUiState(
+    val tab: HomeTab = HomeTab.MOVIES,
+    val movies: FeedState = FeedState(),
+    val tv: FeedState = FeedState(),
+    val query: String = "",
+    val searching: Boolean = false,
+    val results: List<MediaItem> = emptyList(),
+    val searchError: String? = null
+)
+
+class HomeViewModel : ViewModel() {
+
+    private val _state = MutableStateFlow(HomeUiState())
+    val state: StateFlow<HomeUiState> = _state.asStateFlow()
+
+    private var searchJob: Job? = null
+
+    init {
+        loadNext(HomeTab.MOVIES)
+    }
+
+    fun selectTab(tab: HomeTab) {
+        _state.update { it.copy(tab = tab) }
+        loadNext(tab)
+    }
+
+    fun loadNext(tab: HomeTab) {
+        val feed = feedOf(tab)
+        if (feed.loading || feed.endReached) return
+
+        updateFeed(tab) { it.copy(loading = true, error = null) }
+
+        viewModelScope.launch {
+            val nextPage = feed.page + 1
+            try {
+                val response = when (tab) {
+                    HomeTab.MOVIES -> VidApiClient.service.latestMovies(nextPage)
+                    HomeTab.TV -> VidApiClient.service.latestTvShows(nextPage)
+                }
+
+                val rawItems = response.items.orEmpty()
+                val mapped = rawItems.mapNotNull { it.toMediaItem(isTv = tab == HomeTab.TV) }
+
+                updateFeed(tab) { current ->
+                    current.copy(
+                        items = (current.items + mapped).distinctBy { it.key },
+                        page = nextPage,
+                        // An empty page means there is nothing more to load.
+                        totalPages = if (rawItems.isEmpty()) nextPage else response.totalPages,
+                        loading = false
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                updateFeed(tab) { it.copy(loading = false, error = e.toUserMessage()) }
+            }
+        }
+    }
+
+    fun onQueryChanged(value: String) {
+        searchJob?.cancel()
+
+        _state.update {
+            it.copy(query = value, searching = false, results = emptyList(), searchError = null)
+        }
+
+        val query = value.trim()
+        if (query.length < 2) return
+
+        searchJob = viewModelScope.launch {
+            _state.update { it.copy(searching = true) }
+            delay(400) // debounce typing
+
+            try {
+                val results = ImdbSuggestApi.search(query)
+                _state.update {
+                    it.copy(
+                        searching = false,
+                        results = results,
+                        searchError = if (results.isEmpty()) "No results for \"$query\"." else null
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _state.update {
+                    it.copy(searching = false, results = emptyList(), searchError = e.toUserMessage())
+                }
+            }
+        }
+    }
+
+    fun clearSearch() = onQueryChanged("")
+
+    private fun feedOf(tab: HomeTab): FeedState =
+        if (tab == HomeTab.MOVIES) _state.value.movies else _state.value.tv
+
+    private fun updateFeed(tab: HomeTab, transform: (FeedState) -> FeedState) {
+        _state.update { s ->
+            if (tab == HomeTab.MOVIES) s.copy(movies = transform(s.movies))
+            else s.copy(tv = transform(s.tv))
+        }
+    }
+
+    private fun Throwable.toUserMessage(): String = when (this) {
+        is HttpException -> when (code()) {
+            429 -> "Too many requests. Please try again later."
+            in 500..599 -> "The server is temporarily unavailable."
+            else -> "Request failed (HTTP ${code()})."
+        }
+        is IOException -> "Network error. Check your internet connection."
+        else -> "Something went wrong."
+    }
+}
