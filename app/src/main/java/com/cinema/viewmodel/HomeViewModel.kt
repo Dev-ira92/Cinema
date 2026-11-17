@@ -1,9 +1,9 @@
-
 package com.cinema.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cinema.data.api.TmdbApi
+import com.cinema.data.api.VidApi
 import com.cinema.data.model.MediaItem
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -42,10 +42,15 @@ class HomeViewModel : ViewModel() {
         loadHome()
     }
 
+    // ---------------------------------------------------------
+    // HOME CATALOG - VIDAPI
+    // ---------------------------------------------------------
+
     fun loadHome() {
         if (homeJob?.isActive == true) return
 
         homeJob = viewModelScope.launch {
+
             _state.value = _state.value.copy(
                 loading = true,
                 error = null
@@ -53,44 +58,112 @@ class HomeViewModel : ViewModel() {
 
             try {
                 val data = coroutineScope {
+
                     val moviesRequest = async {
-                        TmdbApi.service.popularMovies()
+                        VidApi.service.latestMovies(1)
                     }
 
                     val tvRequest = async {
-                        TmdbApi.service.popularTv()
+                        VidApi.service.latestTvShows(1)
                     }
 
-                    val trendingRequest = async {
-                        TmdbApi.service.trendingAll()
-                    }
-
-                    Triple(
+                    Pair(
                         moviesRequest.await(),
-                        tvRequest.await(),
-                        trendingRequest.await()
+                        tvRequest.await()
                     )
                 }
 
+                val movies = data.first.items
+                    .mapNotNull { item ->
+
+                        val tmdbId = item.tmdbId?.toIntOrNull()
+                            ?: return@mapNotNull null
+
+                        MediaItem(
+                            id = tmdbId,
+                            mediaType = "movie",
+                            title = item.title,
+                            releaseDate = item.year,
+                            rating = item.rating.toDoubleOrNull() ?: 0.0,
+                            popularity = item.popularity.toDoubleOrNull() ?: 0.0,
+                            imdbId = item.imdbId,
+                            posterUrlOverride = item.posterUrl
+                        )
+                    }
+                    .distinctBy { it.id }
+
+                val tvShows = data.second.items
+                    .mapNotNull { item ->
+
+                        val tmdbId = item.tmdbId?.toIntOrNull()
+                            ?: return@mapNotNull null
+
+                        MediaItem(
+                            id = tmdbId,
+                            mediaType = "tv",
+                            name = item.title,
+                            firstAirDate = item.year,
+                            rating = item.rating.toDoubleOrNull() ?: 0.0,
+                            popularity = item.popularity.toDoubleOrNull() ?: 0.0,
+                            imdbId = item.imdbId,
+                            posterUrlOverride = item.posterUrl
+                        )
+                    }
+                    .distinctBy { it.id }
+
+                val recentlyAdded = (movies + tvShows)
+                    .distinctBy { "${it.normalizedType}:${it.id}" }
+                    .sortedByDescending { it.popularity }
+                    .take(24)
+
                 _state.value = _state.value.copy(
                     loading = false,
-                    movies = data.first.results,
-                    tvShows = data.second.results,
-                    trending = data.third.results,
-                    error = null
+                    movies = movies,
+                    tvShows = tvShows,
+                    trending = recentlyAdded,
+                    error = if (movies.isEmpty() && tvShows.isEmpty()) {
+                        "VidAPI returned no catalog items."
+                    } else {
+                        null
+                    }
                 )
 
             } catch (e: CancellationException) {
                 throw e
 
+            } catch (e: HttpException) {
+                _state.value = _state.value.copy(
+                    loading = false,
+                    error = when (e.code()) {
+                        403 ->
+                            "VidAPI access was denied. Check the service configuration."
+
+                        404 ->
+                            "VidAPI catalog endpoint was not found."
+
+                        429 ->
+                            "Too many requests. Please try again later."
+
+                        in 500..599 ->
+                            "VidAPI is temporarily unavailable."
+
+                        else ->
+                            "Unable to load catalog. HTTP ${e.code()}."
+                    }
+                )
+
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     loading = false,
-                    error = "Unable to load movies and TV shows. Check your internet connection and TMDB API configuration."
+                    error = "Unable to load movies and TV shows. Check your internet connection."
                 )
             }
         }
     }
+
+    // ---------------------------------------------------------
+    // SEARCH - TEMPORARILY STILL TMDB
+    // ---------------------------------------------------------
 
     fun onQueryChanged(value: String) {
 
@@ -112,7 +185,6 @@ class HomeViewModel : ViewModel() {
             return
         }
 
-        // Show loading immediately, including during debounce.
         _state.value = _state.value.copy(
             searching = true
         )
@@ -120,7 +192,6 @@ class HomeViewModel : ViewModel() {
         searchJob = viewModelScope.launch {
 
             try {
-                // Debounce rapid typing.
                 delay(350)
 
                 val response = TmdbApi.service.searchMulti(
@@ -130,7 +201,6 @@ class HomeViewModel : ViewModel() {
                     includeAdult = false
                 )
 
-                // Ignore outdated responses.
                 if (currentRequestId != searchRequestId) {
                     return@launch
                 }
@@ -166,7 +236,7 @@ class HomeViewModel : ViewModel() {
 
                 val message = when (e.code()) {
                     401, 403 ->
-                        "TMDB rejected the API credentials. Check your configuration."
+                        "TMDB search is unavailable. Search migration is not complete yet."
 
                     404 ->
                         "The search service could not be found."
@@ -175,7 +245,7 @@ class HomeViewModel : ViewModel() {
                         "Too many searches. Please wait a moment and try again."
 
                     in 500..599 ->
-                        "TMDB is temporarily unavailable. Please try again later."
+                        "Search service is temporarily unavailable."
 
                     else ->
                         "Search failed: HTTP ${e.code()}."
