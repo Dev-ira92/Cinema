@@ -1,8 +1,8 @@
+
 package com.cinema.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.cinema.data.api.TmdbApi
 import com.cinema.data.api.VidApi
 import com.cinema.data.model.MediaItem
 import kotlinx.coroutines.CancellationException
@@ -81,6 +81,11 @@ class HomeViewModel : ViewModel() {
                         val numericId = item.tmdbId?.toIntOrNull()
                             ?: return@mapNotNull null
 
+                        val imdbId = item.imdbId
+                            ?.takeIf {
+                                Regex("^tt[0-9]+$").matches(it)
+                            }
+
                         MediaItem(
                             id = numericId,
                             mediaType = "movie",
@@ -88,7 +93,7 @@ class HomeViewModel : ViewModel() {
                             releaseDate = item.year,
                             rating = item.rating.toDoubleOrNull() ?: 0.0,
                             popularity = item.popularity.toDoubleOrNull() ?: 0.0,
-                            imdbId = item.imdbId,
+                            imdbId = imdbId,
                             posterUrlOverride = item.posterUrl
                         )
                     }
@@ -100,6 +105,11 @@ class HomeViewModel : ViewModel() {
                         val numericId = item.tmdbId?.toIntOrNull()
                             ?: return@mapNotNull null
 
+                        val imdbId = item.imdbId
+                            ?.takeIf {
+                                Regex("^tt[0-9]+$").matches(it)
+                            }
+
                         MediaItem(
                             id = numericId,
                             mediaType = "tv",
@@ -107,7 +117,7 @@ class HomeViewModel : ViewModel() {
                             firstAirDate = item.year,
                             rating = item.rating.toDoubleOrNull() ?: 0.0,
                             popularity = item.popularity.toDoubleOrNull() ?: 0.0,
-                            imdbId = item.imdbId,
+                            imdbId = imdbId,
                             posterUrlOverride = item.posterUrl
                         )
                     }
@@ -173,7 +183,7 @@ class HomeViewModel : ViewModel() {
     }
 
     // -----------------------------------------------------
-    // SEARCH - TEMPORARILY TMDB
+    // LOCAL SEARCH - VIDAPI CATALOG
     // -----------------------------------------------------
 
     fun onQueryChanged(value: String) {
@@ -197,44 +207,58 @@ class HomeViewModel : ViewModel() {
             return
         }
 
-        _state.value = _state.value.copy(
-            searching = true
-        )
-
         searchJob = viewModelScope.launch {
+
+            _state.value = _state.value.copy(
+                searching = true
+            )
 
             try {
 
-                delay(350)
-
-                val response = TmdbApi.service.searchMulti(
-                    query = query,
-                    language = "en-US",
-                    page = 1,
-                    includeAdult = false
-                )
+                delay(250)
 
                 if (currentRequestId != searchRequestId) {
                     return@launch
                 }
 
-                val filtered = response.results
-                    .filter {
-                        it.id > 0 &&
-                            (
-                                it.mediaType == "movie" ||
-                                    it.mediaType == "tv"
-                            )
-                    }
-                    .distinctBy {
-                        "${it.mediaType}:${it.id}"
-                    }
+                val current = _state.value
+
+                val catalog = (
+                    current.movies + current.tvShows
+                ).distinctBy {
+                    "${it.normalizedType}:${it.id}"
+                }
+
+                val normalizedQuery = query.lowercase()
+
+                val filtered = catalog.filter { item ->
+
+                    item.displayTitle
+                        .lowercase()
+                        .contains(normalizedQuery) ||
+
+                    item.originalDisplayTitle
+                        .lowercase()
+                        .contains(normalizedQuery) ||
+
+                    item.overview
+                        .lowercase()
+                        .contains(normalizedQuery) ||
+
+                    item.imdbId
+                        ?.lowercase()
+                        ?.contains(normalizedQuery) == true
+                }
+
+                if (currentRequestId != searchRequestId) {
+                    return@launch
+                }
 
                 _state.value = _state.value.copy(
                     searching = false,
                     results = filtered,
                     searchError = if (filtered.isEmpty()) {
-                        "No matching movies or TV shows were found. Try another title."
+                        "No matching titles in the loaded VidAPI catalog. Load more catalog pages or try another title."
                     } else {
                         null
                     }
@@ -243,36 +267,6 @@ class HomeViewModel : ViewModel() {
             } catch (e: CancellationException) {
 
                 throw e
-
-            } catch (e: HttpException) {
-
-                if (currentRequestId != searchRequestId) {
-                    return@launch
-                }
-
-                val message = when (e.code()) {
-
-                    401, 403 ->
-                        "TMDB search is unavailable. Search migration is not complete yet."
-
-                    404 ->
-                        "The search service could not be found."
-
-                    429 ->
-                        "Too many searches. Please wait a moment and try again."
-
-                    in 500..599 ->
-                        "Search service is temporarily unavailable."
-
-                    else ->
-                        "Search failed: HTTP ${e.code()}."
-                }
-
-                _state.value = _state.value.copy(
-                    searching = false,
-                    results = emptyList(),
-                    searchError = message
-                )
 
             } catch (e: Exception) {
 
@@ -283,7 +277,7 @@ class HomeViewModel : ViewModel() {
                 _state.value = _state.value.copy(
                     searching = false,
                     results = emptyList(),
-                    searchError = "Search failed. Check your internet connection and try again."
+                    searchError = "Search failed. Please try again."
                 )
             }
         }
