@@ -1,8 +1,17 @@
 
 package com.cinema.ui.screens
 
+import android.graphics.Color
+import android.net.Uri
+import android.webkit.WebChromeClient
+import android.webkit.WebResourceError
+import android.webkit.WebResourceRequest
+import android.webkit.WebSettings
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -15,25 +24,16 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.media3.common.PlaybackException
-import androidx.media3.common.Player
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.ui.PlayerView
-import com.cinema.data.SubtitleDownloader
-import com.cinema.player.SubtitlePlayer
+import android.view.ViewGroup
 import com.cinema.ui.theme.CinemaBackground
 import com.cinema.ui.theme.CinemaText
-import kotlinx.coroutines.CancellationException
 
 @Composable
 fun PlayerScreen(
@@ -42,149 +42,87 @@ fun PlayerScreen(
     subtitleUrl: String?,
     onBack: () -> Unit
 ) {
-    val context = LocalContext.current
-
     var loading by remember {
-        mutableStateOf(false)
-    }
-
-    var buffering by remember {
-        mutableStateOf(false)
+        mutableStateOf(true)
     }
 
     var error by remember {
         mutableStateOf<String?>(null)
     }
 
-    var playbackState by remember {
-        mutableIntStateOf(Player.STATE_IDLE)
+    val embedUrl = remember(videoUrl, subtitleUrl) {
+        buildVidApiUrl(videoUrl, subtitleUrl)
     }
 
-    val player = remember(context) {
-        ExoPlayer.Builder(context.applicationContext)
-            .build()
+    val webView = remember {
+        WebView(androidx.compose.ui.platform.LocalContext.current)
     }
 
-    // Listen to actual player state and playback errors.
-    DisposableEffect(player) {
+    DisposableEffect(webView, embedUrl) {
 
-        val listener = object : Player.Listener {
+        webView.settings.apply {
+            javaScriptEnabled = true
+            domStorageEnabled = true
+            mediaPlaybackRequiresUserGesture = false
+            allowFileAccess = false
+            allowContentAccess = false
+            mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+            javaScriptCanOpenWindowsAutomatically = false
+            setSupportMultipleWindows(false)
+        }
 
-            override fun onPlaybackStateChanged(
-                state: Int
+        webView.setBackgroundColor(Color.BLACK)
+
+        webView.webChromeClient = WebChromeClient()
+
+        webView.webViewClient = object : WebViewClient() {
+
+            override fun onPageStarted(
+                view: WebView?,
+                url: String?,
+                favicon: android.graphics.Bitmap?
             ) {
-                playbackState = state
-                buffering = state == Player.STATE_BUFFERING
+                loading = true
+                error = null
             }
 
-            override fun onPlayerError(
-                playbackException: PlaybackException
+            override fun onPageFinished(
+                view: WebView?,
+                url: String?
             ) {
-                error = when (
-                    playbackException.errorCode
-                ) {
-                    PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
-                    PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ->
-                        "Network connection failed. Check your internet connection."
+                loading = false
+            }
 
-                    PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ->
-                        "The video server rejected the request."
-
-                    PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
-                    PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED ->
-                        "The video format or stream is invalid."
-
-                    PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
-                    PlaybackException.ERROR_CODE_DECODING_FAILED ->
-                        "This video format could not be decoded on this device."
-
-                    else ->
-                        playbackException.message
-                            ?: "Video playback failed."
+            override fun onReceivedError(
+                view: WebView?,
+                request: WebResourceRequest?,
+                errorInfo: WebResourceError?
+            ) {
+                if (request?.isForMainFrame == true) {
+                    loading = false
+                    error = "Unable to load VidAPI player. Check your internet connection."
                 }
             }
         }
 
-        player.addListener(listener)
+        if (embedUrl != null) {
+            webView.tag = embedUrl
+            webView.loadUrl(embedUrl)
+        } else {
+            loading = false
+            error = "Invalid VidAPI embed URL."
+        }
 
         onDispose {
-            player.removeListener(listener)
-            player.release()
+            webView.stopLoading()
         }
     }
 
-    // Download subtitle if selected, then prepare the video.
-    LaunchedEffect(
-        videoUrl,
-        subtitleUrl
-    ) {
-
-        error = null
-        loading = true
-        buffering = false
-        playbackState = Player.STATE_IDLE
-
-        try {
-
-            if (videoUrl.isBlank()) {
-                throw IllegalArgumentException(
-                    "Video URL is empty."
-                )
-            }
-
-            val cleanVideoUrl = videoUrl.trim()
-
-            val mediaItem = if (
-                !subtitleUrl.isNullOrBlank()
-            ) {
-
-                val subtitleFile = SubtitleDownloader.download(
-                    context = context,
-                    subtitleUrl = subtitleUrl
-                )
-
-                if (
-                    !subtitleFile.exists() ||
-                    subtitleFile.length() == 0L
-                ) {
-                    throw IllegalStateException(
-                        "The downloaded subtitle file is empty."
-                    )
-                }
-
-                SubtitlePlayer.createMediaItem(
-                    videoUrl = cleanVideoUrl,
-                    subtitleUrl = android.net.Uri
-                        .fromFile(subtitleFile)
-                        .toString()
-                )
-
-            } else {
-
-                SubtitlePlayer.createMediaItem(
-                    videoUrl = cleanVideoUrl,
-                    subtitleUrl = null
-                )
-            }
-
-            player.stop()
-            player.clearMediaItems()
-            player.setMediaItem(mediaItem)
-            player.prepare()
-            player.playWhenReady = true
-
-        } catch (e: CancellationException) {
-
-            throw e
-
-        } catch (e: Exception) {
-
-            error = e.message
-                ?: "Unable to prepare video."
-
-        } finally {
-
-            loading = false
+    DisposableEffect(webView) {
+        onDispose {
+            webView.stopLoading()
+            webView.loadUrl("about:blank")
+            webView.destroy()
         }
     }
 
@@ -209,76 +147,86 @@ fun PlayerScreen(
             style = MaterialTheme.typography.titleLarge
         )
 
-        AndroidView(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f),
-            factory = { viewContext ->
-
-                PlayerView(viewContext).apply {
-                    this.player = player
-                    useController = true
-                    controllerAutoShow = true
-                    keepScreenOn = true
-                }
-            },
-            update = { view ->
-                if (view.player !== player) {
-                    view.player = player
-                }
-            }
-        )
-
-        if (loading) {
-
-            CircularProgressIndicator()
-
-            Text(
-                text = "Downloading subtitle and preparing video...",
-                color = CinemaText
-            )
-        }
-
-        if (buffering && !loading) {
-
-            Text(
-                text = "Buffering...",
-                color = CinemaText
-            )
-        }
-
-        if (
-            playbackState == Player.STATE_ENDED &&
-            error == null
+                .weight(1f)
+                .background(androidx.compose.ui.graphics.Color.Black)
         ) {
-            Text(
-                text = "Playback finished.",
-                color = CinemaText
-            )
-        }
 
-        error?.let { message ->
+            if (embedUrl != null) {
+                AndroidView(
+                    factory = {
+                        (webView.parent as? ViewGroup)?.removeView(webView)
+                        webView
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
 
-            Text(
-                text = message,
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodyMedium
-            )
+            if (loading) {
+                CircularProgressIndicator()
+            }
 
-            Button(
-                onClick = {
-                    error = null
-                    player.prepare()
-                    player.play()
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Retry playback")
+            error?.let { message ->
+                Text(
+                    text = message,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(16.dp)
+                )
             }
         }
 
-        Spacer(
-            modifier = Modifier.height(4.dp)
+        Text(
+            text = "Powered by VidAPI",
+            color = CinemaText,
+            style = MaterialTheme.typography.bodySmall
         )
+
+        Spacer(modifier = Modifier.height(4.dp))
+    }
+}
+
+private fun buildVidApiUrl(
+    videoUrl: String,
+    subtitleUrl: String?
+): String? {
+
+    return try {
+
+        val uri = Uri.parse(videoUrl.trim())
+
+        if (uri.scheme != "https") {
+            return null
+        }
+
+        if (uri.host != "vaplayer.ru") {
+            return null
+        }
+
+        val path = uri.path.orEmpty()
+
+        val validPath =
+            path.startsWith("/embed/movie/") ||
+            path.startsWith("/embed/tv/") ||
+            path == "/embed/movie" ||
+            path == "/embed/tv"
+
+        if (!validPath) {
+            return null
+        }
+
+        val builder = uri.buildUpon()
+
+        if (!subtitleUrl.isNullOrBlank()) {
+            builder
+                .appendQueryParameter("sub_url", subtitleUrl)
+                .appendQueryParameter("sub_default", "true")
+        }
+
+        builder.build().toString()
+
+    } catch (_: Exception) {
+        null
     }
 }
