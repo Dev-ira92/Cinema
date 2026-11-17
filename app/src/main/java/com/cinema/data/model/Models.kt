@@ -1,4 +1,3 @@
-
 package com.cinema.data.model
 
 import com.google.gson.annotations.SerializedName
@@ -12,28 +11,44 @@ data class TmdbSearchResponse(
 
 data class MediaItem(
     val id: Int = 0,
+
     @SerializedName("media_type")
     val mediaType: String = "movie",
+
     val title: String = "",
     val name: String = "",
+
     @SerializedName("original_title")
     val originalTitle: String = "",
+
     @SerializedName("original_name")
     val originalName: String = "",
+
     val overview: String = "",
+
     @SerializedName("poster_path")
     val posterPath: String? = null,
+
     @SerializedName("backdrop_path")
     val backdropPath: String? = null,
+
     @SerializedName("release_date")
     val releaseDate: String = "",
+
     @SerializedName("first_air_date")
     val firstAirDate: String = "",
+
     @SerializedName("vote_average")
     val rating: Double = 0.0,
+
     @SerializedName("vote_count")
     val voteCount: Int = 0,
-    val popularity: Double = 0.0
+
+    val popularity: Double = 0.0,
+
+    // VidAPI / IMDb fields
+    val imdbId: String? = null,
+    val posterUrlOverride: String? = null
 ) {
     val displayTitle: String
         get() = title.ifBlank { name }
@@ -53,7 +68,7 @@ data class MediaItem(
         get() = if (mediaType == "tv") "tv" else "movie"
 
     val posterUrl: String?
-        get() = posterPath?.let {
+        get() = posterUrlOverride ?: posterPath?.let {
             "https://image.tmdb.org/t/p/w500$it"
         }
 
@@ -69,21 +84,29 @@ data class MediaItem(
 data class MovieDetail(
     val id: Int = 0,
     val title: String = "",
+
     @SerializedName("original_title")
     val originalTitle: String = "",
+
     val overview: String = "",
     val tagline: String = "",
+
     @SerializedName("poster_path")
     val posterPath: String? = null,
+
     @SerializedName("backdrop_path")
     val backdropPath: String? = null,
+
     @SerializedName("release_date")
     val releaseDate: String = "",
+
     @SerializedName("vote_average")
     val rating: Double = 0.0,
+
     val runtime: Int = 0,
     val genres: List<Genre> = emptyList(),
     val credits: Credits? = null,
+
     @SerializedName("imdb_id")
     val imdbId: String? = null
 ) {
@@ -117,24 +140,34 @@ data class MovieDetail(
 data class TvDetail(
     val id: Int = 0,
     val name: String = "",
+
     @SerializedName("original_name")
     val originalName: String = "",
+
     val overview: String = "",
     val tagline: String = "",
+
     @SerializedName("poster_path")
     val posterPath: String? = null,
+
     @SerializedName("backdrop_path")
     val backdropPath: String? = null,
+
     @SerializedName("first_air_date")
     val firstAirDate: String = "",
+
     @SerializedName("vote_average")
     val rating: Double = 0.0,
+
     @SerializedName("number_of_seasons")
     val numberOfSeasons: Int = 0,
+
     @SerializedName("number_of_episodes")
     val numberOfEpisodes: Int = 0,
+
     val seasons: List<TvSeasonSummary> = emptyList(),
     val genres: List<Genre> = emptyList(),
+
     @SerializedName("external_ids")
     val externalIds: ExternalIds? = null
 ) {
@@ -169,22 +202,29 @@ data class ExternalIds(
 data class TvSeasonSummary(
     val id: Int = 0,
     val name: String = "",
+
     @SerializedName("season_number")
     val seasonNumber: Int = 0,
+
     @SerializedName("episode_count")
     val episodeCount: Int = 0,
+
     @SerializedName("air_date")
     val airDate: String? = null,
+
     @SerializedName("poster_path")
     val posterPath: String? = null,
+
     val overview: String = ""
 )
 
 data class TvSeasonDetail(
     val id: Int = 0,
     val name: String = "",
+
     @SerializedName("season_number")
     val seasonNumber: Int = 0,
+
     val episodes: List<TvEpisode> = emptyList()
 )
 
@@ -192,14 +232,19 @@ data class TvEpisode(
     val id: Int = 0,
     val name: String = "",
     val overview: String = "",
+
     @SerializedName("episode_number")
     val episodeNumber: Int = 0,
+
     @SerializedName("season_number")
     val seasonNumber: Int = 0,
+
     @SerializedName("air_date")
     val airDate: String? = null,
+
     @SerializedName("still_path")
     val stillPath: String? = null,
+
     @SerializedName("vote_average")
     val rating: Double = 0.0
 ) {
@@ -243,11 +288,15 @@ data class SubdlResponse(
 data class SubdlItem(
     @SerializedName("release_name")
     val releaseName: String = "",
+
     val url: String = "",
     val language: String = "",
+
     @SerializedName("full_name")
     val fullName: String = "",
+
     val author: String = "",
+
     @SerializedName("file_name")
     val fileName: String = ""
 )
