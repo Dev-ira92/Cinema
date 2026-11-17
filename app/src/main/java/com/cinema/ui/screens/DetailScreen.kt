@@ -1,231 +1,64 @@
-
 package com.cinema.ui.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.cinema.data.model.MediaItem
-import com.cinema.ui.theme.CinemaBackground
-import com.cinema.ui.theme.CinemaMuted
-import com.cinema.ui.theme.CinemaPrimary
-import com.cinema.ui.theme.CinemaText
+import com.cinema.data.model.SubdlItem
+import com.cinema.data.model.TvEpisode
+import com.cinema.ui.theme.*
+import com.cinema.viewmodel.DetailViewModel
+
+private enum class SubtitleFilter { ALL, PERSIAN, ENGLISH }
 
 @Composable
 fun DetailScreen(
-    item: MediaItem,
-    onBack: () -> Unit,
-    onPlay: (String, String, String?) -> Unit
+    item   : MediaItem,
+    onBack : () -> Unit,
+    onPlay : (String, String, String?) -> Unit,
+    vm     : DetailViewModel = viewModel()
 ) {
-    var season by remember(item.id) {
-        mutableStateOf("1")
-    }
+    val context          = LocalContext.current
+    val state            by vm.state.collectAsState()
+    var customSubTitle   by remember(item.id) { mutableStateOf("") }
+    var selectedSubtitle by remember(item.id) { mutableStateOf<SubdlItem?>(null) }
+    var seasonMenuExpanded by remember { mutableStateOf(false) }
+    var subtitleFilter   by remember(item.id) { mutableStateOf(SubtitleFilter.ALL) }
 
-    var episode by remember(item.id) {
-        mutableStateOf("1")
-    }
+    LaunchedEffect(item.id, item.normalizedType) { vm.load(item) }
 
-    val isTv = item.normalizedType == "tv"
-    val imdbId = item.imdbId.orEmpty().trim()
+    val isTv          = item.normalizedType == "tv"
+    val displayTitle  = item.displayTitle
+    val overview      = state.movie?.overview ?: state.tv?.overview ?: item.overview
+    val seasons       = state.tv?.seasons.orEmpty().filter { it.seasonNumber >= 0 }
+    val episodes      = state.season?.episodes.orEmpty()
 
-    val validImdbId = imdbId.matches(
-        Regex("^tt[0-9]+$")
-    )
+    // IMDB id — from TMDB detail if available, else from catalog
+    val imdbId = when {
+        isTv  -> state.tv?.imdbId ?: item.imdbId
+        else  -> state.movie?.imdbId ?: item.imdbId
+    }?.trim()?.takeIf { it.matches(Regex("^tt[0-9]+$")) }
 
-    val seasonNumber = season.toIntOrNull()
-    val episodeNumber = episode.toIntOrNull()
+    // vaplayer embed URL
+    val embedUrl = buildEmbedUrl(isTv, imdbId, state.selectedEpisode)
 
-    val validEpisodeSelection =
-        !isTv || (
-            seasonNumber != null &&
-            episodeNumber != null &&
-            seasonNumber > 0 &&
-            episodeNumber > 0
-        )
-
-    val canPlay = validImdbId && validEpisodeSelection
-
-    val embedUrl = if (canPlay) {
-        if (isTv) {
-            "https://vaplayer.ru/embed/tv/$imdbId/$seasonNumber/$episodeNumber"
-        } else {
-            "https://vaplayer.ru/embed/movie/$imdbId"
-        }
-    } else {
-        null
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(CinemaBackground)
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
-        TextButton(
-            onClick = onBack
-        ) {
-            Text(
-                text = "← Back",
-                color = CinemaPrimary
-            )
-        }
-
-        AsyncImage(
-            model = item.backdropUrl ?: item.posterUrl,
-            contentDescription = item.displayTitle,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(220.dp)
-                .clip(RoundedCornerShape(16.dp)),
-            contentScale = ContentScale.Crop
-        )
-
-        Text(
-            text = item.displayTitle,
-            color = CinemaText,
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold
-        )
-
-        Row(
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = if (isTv) "TV Series" else "Movie",
-                color = CinemaPrimary
-            )
-
-            Spacer(modifier = Modifier.width(16.dp))
-
-            if (item.year.isNotBlank()) {
-                Text(
-                    text = item.year,
-                    color = CinemaMuted
-                )
-            }
-
-            Spacer(modifier = Modifier.width(16.dp))
-
-            Text(
-                text = "★ ${item.ratingText}",
-                color = CinemaPrimary
-            )
-        }
-
-        if (item.overview.isNotBlank()) {
-            Text(
-                text = "Overview",
-                color = CinemaPrimary,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
-
-            Text(
-                text = item.overview,
-                color = CinemaText,
-                style = MaterialTheme.typography.bodyMedium
-            )
-        }
-
-        if (isTv) {
-            Text(
-                text = "Select episode",
-                color = CinemaPrimary,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                OutlinedTextField(
-                    value = season,
-                    onValueChange = {
-                        season = it.filter { char -> char.isDigit() }.take(3)
-                    },
-                    modifier = Modifier.weight(1f),
-                    label = { Text("Season") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Number
-                    )
-                )
-
-                OutlinedTextField(
-                    value = episode,
-                    onValueChange = {
-                        episode = it.filter { char -> char.isDigit() }.take(3)
-                    },
-                    modifier = Modifier.weight(1f),
-                    label = { Text("Episode") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Number
-                    )
-                )
-            }
-        }
-
-        if (!validImdbId) {
-            Text(
-                text = "IMDb ID is not available for this title. Playback cannot start.",
-                color = MaterialTheme.colorScheme.error
-            )
-        } else if (!validEpisodeSelection) {
-            Text(
-                text = "Enter a valid season and episode number.",
-                color = MaterialTheme.colorScheme.error
-            )
-        }
-
-        Button(
-            onClick = {
-                embedUrl?.let {
-                    onPlay(it, item.displayTitle, null)
-                }
-            },
-            enabled = canPlay,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Play")
-        }
-
-        Text(
-            text = "Powered by VidAPI",
-            color = CinemaMuted,
-            style = MaterialTheme.typography.bodySmall
-        )
-    }
-}
+    val visibleSubtitles = remember(state.subtitles, subtitleFilter) {
+        val f = state.subtitles.filter {
+            when (subtitleFilter) {
+                SubtitleFilter.ALL     -> true
+                SubtitleFilter.PERSIAN -> isPersianSubtitle(it.language
