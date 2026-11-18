@@ -1,6 +1,7 @@
 package com.cinema.data
 
 import android.content.Context
+import com.cinema.BuildConfig
 import com.cinema.data.api.TmdbConfig
 
 object AppPrefs {
@@ -30,8 +31,10 @@ object AppPrefs {
         prefs(context).edit().putString(KEY_SUBTITLE_LANG, code).apply()
     }
 
+    /** User-entered key wins; otherwise the build-time default is used. */
     fun tmdbKey(context: Context): String =
-        prefs(context).getString(KEY_TMDB, "") ?: ""
+        prefs(context).getString(KEY_TMDB, "")?.takeIf { it.isNotBlank() }
+            ?: BuildConfig.TMDB_DEFAULT_KEY
 
     fun setTmdbKey(context: Context, key: String) {
         val clean = key.trim()
