@@ -19,6 +19,29 @@ import java.io.IOException
 
 enum class HomeTab { MOVIES, TV }
 
+data class GenreChip(val label: String, val keys: List<String>)
+
+/** Genre filters; matched (case-insensitively) against the catalog's "genre" text. */
+object Genres {
+    val all = listOf(
+        GenreChip("Action", listOf("action")),
+        GenreChip("Adventure", listOf("adventure")),
+        GenreChip("Animation", listOf("animation")),
+        GenreChip("Comedy", listOf("comedy")),
+        GenreChip("Crime", listOf("crime")),
+        GenreChip("Documentary", listOf("documentary")),
+        GenreChip("Drama", listOf("drama")),
+        GenreChip("Family", listOf("family")),
+        GenreChip("Fantasy", listOf("fantasy")),
+        GenreChip("Horror", listOf("horror")),
+        GenreChip("Mystery", listOf("mystery")),
+        GenreChip("Romance", listOf("romance")),
+        GenreChip("Sci-Fi", listOf("sci-fi", "science fiction")),
+        GenreChip("Thriller", listOf("thriller")),
+        GenreChip("War", listOf("war"))
+    )
+}
+
 data class FeedState(
     val items: List<MediaItem> = emptyList(),
     val page: Int = 0,
@@ -33,6 +56,7 @@ data class FeedState(
 
 data class HomeUiState(
     val tab: HomeTab = HomeTab.MOVIES,
+    val genre: String? = null,
     val movies: FeedState = FeedState(),
     val tv: FeedState = FeedState(),
     val query: String = "",
@@ -55,6 +79,10 @@ class HomeViewModel : ViewModel() {
     fun selectTab(tab: HomeTab) {
         _state.update { it.copy(tab = tab) }
         loadNext(tab)
+    }
+
+    fun selectGenre(label: String?) {
+        _state.update { it.copy(genre = label) }
     }
 
     fun loadNext(tab: HomeTab) {
