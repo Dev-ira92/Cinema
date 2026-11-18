@@ -14,10 +14,27 @@ android {
 
         versionCode = 1
         versionName = "1.0"
+
+        val tmdbKey = (providers.gradleProperty("TMDB_API_KEY").orNull
+            ?: System.getenv("TMDB_API_KEY")
+            ?: "b8682ea087c2699ba1eb9caab08d9077")
+        buildConfigField("String", "TMDB_DEFAULT_KEY", "\"$tmdbKey\"")
+    }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+        }
     }
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     composeOptions {
@@ -44,6 +61,7 @@ dependencies {
     // Android core
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime)
+    implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.activity.compose)
