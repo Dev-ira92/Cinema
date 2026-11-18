@@ -5,6 +5,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -21,6 +24,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -56,8 +61,11 @@ import com.cinema.ui.theme.CinemaPrimary
 import com.cinema.ui.theme.CinemaPrimaryLight
 import com.cinema.ui.theme.CinemaRed
 import com.cinema.ui.theme.CinemaText
+import com.cinema.viewmodel.Genres
 import com.cinema.viewmodel.HomeTab
 import com.cinema.viewmodel.HomeViewModel
+
+private const val MAX_FILTER_PAGES = 30
 
 @Composable
 fun HomeScreen(
@@ -112,6 +120,7 @@ fun HomeScreen(
         if (searchActive) {
             PosterGrid(
                 list = state.results,
+                loadKey = 0,
                 loading = state.searching,
                 error = state.searchError,
                 emptyText = "",
@@ -139,14 +148,31 @@ fun HomeScreen(
 
             val feed = if (state.tab == HomeTab.MOVIES) state.movies else state.tv
 
-            // key(tab) gives every tab its own scroll position.
-            key(state.tab) {
+            GenreRow(selected = state.genre, onSelect = vm::selectGenre)
+
+            val chip = Genres.all.firstOrNull { it.label == state.genre }
+            val shown = remember(feed.items, chip) {
+                if (chip == null) {
+                    feed.items
+                } else {
+                    feed.items.filter { media ->
+                        val g = media.genre.lowercase()
+                        chip.keys.any { g.contains(it) }
+                    }
+                }
+            }
+
+            // key(...) gives every tab/genre its own scroll position.
+            key(state.tab, state.genre) {
                 PosterGrid(
-                    list = feed.items,
+                    list = shown,
+                    loadKey = feed.items.size,
                     loading = feed.loading,
                     error = feed.error,
-                    emptyText = "Nothing to show yet.",
-                    onLoadMore = { vm.loadNext(state.tab) },
+                    emptyText = if (chip == null) "Nothing to show yet." else "No titles found for this genre yet.",
+                    onLoadMore = {
+                        if (chip == null || feed.page < MAX_FILTER_PAGES) vm.loadNext(state.tab)
+                    },
                     onRetry = { vm.loadNext(state.tab) },
                     onClick = onMediaClick
                 )
@@ -158,6 +184,7 @@ fun HomeScreen(
 @Composable
 private fun PosterGrid(
     list: List<MediaItem>,
+    loadKey: Int,
     loading: Boolean,
     error: String?,
     emptyText: String,
@@ -176,7 +203,7 @@ private fun PosterGrid(
     }
 
     if (onLoadMore != null) {
-        LaunchedEffect(nearEnd, list.size) {
+        LaunchedEffect(nearEnd, list.size, loadKey) {
             if (nearEnd) onLoadMore()
         }
     }
@@ -286,4 +313,35 @@ private fun PosterCard(
             )
         }
     }
+}
+
+@Composable
+private fun GenreRow(selected: String?, onSelect: (String?) -> Unit) {
+    Row(
+        modifier = Modifier
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        GenreChipItem(label = "All", selected = selected == null) { onSelect(null) }
+        Genres.all.forEach { genre ->
+            GenreChipItem(label = genre.label, selected = selected == genre.label) {
+                onSelect(genre.label)
+            }
+        }
+    }
+}
+
+@Composable
+private fun GenreChipItem(label: String, selected: Boolean, onClick: () -> Unit) {
+    FilterChip(
+        selected = selected,
+        onClick = onClick,
+        label = { Text(label) },
+        colors = FilterChipDefaults.filterChipColors(
+            labelColor = CinemaMuted,
+            selectedContainerColor = CinemaPrimary,
+            selectedLabelColor = CinemaText
+        )
+    )
 }
