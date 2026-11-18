@@ -2,27 +2,32 @@ package com.cinema.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
-import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -37,21 +42,25 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
-import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
+import com.cinema.data.AppPrefs
 import com.cinema.data.model.MediaItem
 import com.cinema.ui.theme.CinemaBackground
 import com.cinema.ui.theme.CinemaCard
@@ -60,6 +69,7 @@ import com.cinema.ui.theme.CinemaMuted
 import com.cinema.ui.theme.CinemaPrimary
 import com.cinema.ui.theme.CinemaPrimaryLight
 import com.cinema.ui.theme.CinemaRed
+import com.cinema.ui.theme.CinemaSurface
 import com.cinema.ui.theme.CinemaText
 import com.cinema.viewmodel.Genres
 import com.cinema.viewmodel.HomeTab
@@ -70,10 +80,26 @@ private const val MAX_FILTER_PAGES = 30
 @Composable
 fun HomeScreen(
     onMediaClick: (MediaItem) -> Unit,
+    onPersonClick: (id: Int, name: String) -> Unit,
     vm: HomeViewModel = viewModel()
 ) {
+    val context = LocalContext.current
     val state by vm.state.collectAsState()
     val searchActive = state.query.trim().length >= 2
+
+    var showKeyDialog by remember { mutableStateOf(false) }
+
+    if (showKeyDialog) {
+        TmdbKeyDialog(
+            current = AppPrefs.tmdbKey(context),
+            onDismiss = { showKeyDialog = false },
+            onSave = { key ->
+                AppPrefs.setTmdbKey(context, key)
+                showKeyDialog = false
+                vm.onQueryChanged(state.query)
+            }
+        )
+    }
 
     Column(
         modifier = Modifier
@@ -81,18 +107,28 @@ fun HomeScreen(
             .background(CinemaBackground)
             .systemBarsPadding()
     ) {
-        Text(
-            text = "Cinema",
-            color = CinemaText,
-            style = MaterialTheme.typography.headlineMedium,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
-        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Cinema",
+                color = CinemaText,
+                style = MaterialTheme.typography.headlineMedium,
+                modifier = Modifier.weight(1f)
+            )
+            IconButton(onClick = { showKeyDialog = true }) {
+                Icon(Icons.Default.Settings, contentDescription = "TMDB key", tint = CinemaMuted)
+            }
+        }
 
         OutlinedTextField(
             value = state.query,
             onValueChange = vm::onQueryChanged,
             singleLine = true,
-            placeholder = { Text("Search movies & series", color = CinemaHint) },
+            placeholder = { Text("Search movies, series & people", color = CinemaHint) },
             leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
             trailingIcon = if (state.query.isNotEmpty()) {
                 {
@@ -118,6 +154,30 @@ fun HomeScreen(
         )
 
         if (searchActive) {
+            if (state.people.isNotEmpty()) {
+                Text(
+                    text = "People",
+                    color = CinemaText,
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 6.dp)
+                )
+                Row(
+                    modifier = Modifier
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    state.people.forEach { person ->
+                        PersonAvatar(
+                            photoUrl = person.photoUrl,
+                            name = person.name,
+                            subtitle = person.department,
+                            onClick = { onPersonClick(person.id, person.name) }
+                        )
+                    }
+                }
+            }
+
             PosterGrid(
                 list = state.results,
                 loadKey = 0,
@@ -182,7 +242,7 @@ fun HomeScreen(
 }
 
 @Composable
-private fun PosterGrid(
+internal fun PosterGrid(
     list: List<MediaItem>,
     loadKey: Int,
     loading: Boolean,
@@ -265,7 +325,7 @@ private fun PosterGrid(
 }
 
 @Composable
-private fun PosterCard(
+internal fun PosterCard(
     item: MediaItem,
     onClick: (MediaItem) -> Unit
 ) {
@@ -316,6 +376,64 @@ private fun PosterCard(
 }
 
 @Composable
+internal fun PersonAvatar(
+    photoUrl: String?,
+    name: String,
+    subtitle: String,
+    onClick: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .width(84.dp)
+            .clickable(onClick = onClick),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(
+            modifier = Modifier
+                .size(72.dp)
+                .clip(CircleShape)
+                .background(CinemaCard)
+        ) {
+            if (photoUrl != null) {
+                AsyncImage(
+                    model = photoUrl,
+                    contentDescription = name,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                Text(
+                    text = name.take(1),
+                    color = CinemaMuted,
+                    modifier = Modifier.align(Alignment.Center)
+                )
+            }
+        }
+
+        Text(
+            text = name,
+            color = CinemaText,
+            style = MaterialTheme.typography.labelMedium,
+            textAlign = TextAlign.Center,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 4.dp)
+        )
+
+        if (subtitle.isNotBlank()) {
+            Text(
+                text = subtitle,
+                color = CinemaHint,
+                style = MaterialTheme.typography.labelSmall,
+                textAlign = TextAlign.Center,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
 private fun GenreRow(selected: String?, onSelect: (String?) -> Unit) {
     Row(
         modifier = Modifier
@@ -343,5 +461,51 @@ private fun GenreChipItem(label: String, selected: Boolean, onClick: () -> Unit)
             selectedContainerColor = CinemaPrimary,
             selectedLabelColor = CinemaText
         )
+    )
+}
+
+@Composable
+private fun TmdbKeyDialog(
+    current: String,
+    onDismiss: () -> Unit,
+    onSave: (String) -> Unit
+) {
+    var text by remember { mutableStateOf(current) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = CinemaSurface,
+        titleContentColor = CinemaText,
+        textContentColor = CinemaMuted,
+        title = { Text("TMDB key") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = "Paste your free TMDB API key or read-access token " +
+                        "(themoviedb.org → Settings → API). TMDB may need a VPN in some countries.",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it.trim() },
+                    singleLine = true,
+                    placeholder = { Text("API key", color = CinemaHint) },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = CinemaText,
+                        unfocusedTextColor = CinemaText,
+                        focusedBorderColor = CinemaPrimary,
+                        unfocusedBorderColor = CinemaHint,
+                        cursorColor = CinemaPrimary
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onSave(text) }) { Text("Save") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
     )
 }
