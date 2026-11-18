@@ -55,9 +55,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.cinema.data.AppPrefs
-import com.cinema.data.api.OmdbDetails
 import com.cinema.data.api.VidApiPlayer
-import com.cinema.data.api.omdbClean
+import com.cinema.data.api.tmdbImage
 import com.cinema.data.model.MediaItem
 import com.cinema.ui.theme.CinemaBackground
 import com.cinema.ui.theme.CinemaCard
@@ -67,12 +66,21 @@ import com.cinema.ui.theme.CinemaPrimary
 import com.cinema.ui.theme.CinemaRed
 import com.cinema.ui.theme.CinemaText
 import com.cinema.viewmodel.DetailViewModel
+import java.util.Locale
+
+private data class PersonChip(
+    val id: Int,
+    val name: String,
+    val subtitle: String,
+    val photoUrl: String?
+)
 
 @Composable
 fun DetailScreen(
     item: MediaItem,
     onBack: () -> Unit,
     onPlay: (url: String, title: String) -> Unit,
+    onPersonClick: (id: Int, name: String) -> Unit,
     vm: DetailViewModel = viewModel()
 ) {
     val context = LocalContext.current
@@ -83,21 +91,41 @@ fun DetailScreen(
     var subtitleLang by rememberSaveable { mutableStateOf(AppPrefs.subtitleLang(context)) }
     var playError by remember { mutableStateOf<String?>(null) }
 
-    var apiKey by remember { mutableStateOf(AppPrefs.omdbKey(context)) }
+    var apiKey by remember { mutableStateOf(AppPrefs.tmdbKey(context)) }
     var editingKey by remember { mutableStateOf(false) }
 
-    val imdbId = item.imdbId
     val details = state.details
 
-    LaunchedEffect(imdbId, apiKey) { vm.load(imdbId, apiKey) }
+    LaunchedEffect(item.tmdbId, item.imdbId, item.isTv, apiKey) {
+        vm.load(item.tmdbId, item.imdbId, item.isTv, apiKey)
+    }
 
-    LaunchedEffect(imdbId, season, apiKey, item.isTv) {
-        if (item.isTv && imdbId != null && apiKey.isNotBlank()) {
-            vm.loadSeason(imdbId, season, apiKey)
+    LaunchedEffect(season, details?.id) {
+        if (item.isTv && details != null) vm.loadSeason(season)
+    }
+
+    val maxSeason = (details?.numberOfSeasons ?: 99).coerceIn(1, 99)
+
+    val directors = remember(details) {
+        if (item.isTv) {
+            details?.createdBy.orEmpty().mapNotNull { c ->
+                c.id?.let { PersonChip(it, c.name.orEmpty(), "Creator", tmdbImage(c.profilePath, "w185")) }
+            }
+        } else {
+            details?.credits?.crew.orEmpty()
+                .filter { it.job == "Director" }
+                .distinctBy { it.id }
+                .mapNotNull { c ->
+                    c.id?.let { PersonChip(it, c.name.orEmpty(), "Director", tmdbImage(c.profilePath, "w185")) }
+                }
         }
     }
 
-    val maxSeason = details?.totalSeasons.omdbClean()?.toIntOrNull()?.coerceIn(1, 99) ?: 99
+    val cast = remember(details) {
+        details?.credits?.cast.orEmpty().take(15).mapNotNull { c ->
+            c.id?.let { PersonChip(it, c.name.orEmpty(), c.character.orEmpty(), tmdbImage(c.profilePath, "w185")) }
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -144,20 +172,31 @@ fun DetailScreen(
                     style = MaterialTheme.typography.headlineSmall
                 )
 
-                val rating = details?.imdbRating.omdbClean()
+                val year = item.year.ifBlank {
+                    (details?.releaseDate ?: details?.firstAirDate).orEmpty().take(4)
+                }
+                val rating = details?.voteAverage?.takeIf { it > 0 }
+                    ?.let { String.format(Locale.US, "%.1f", it) }
+                    ?: item.rating.ifBlank { null }
+                val runtime = (details?.runtime ?: details?.episodeRunTime?.firstOrNull())
+                    ?.takeIf { it > 0 }
+                    ?.let { "$it min" }
+
                 val metaLine = listOfNotNull(
-                    item.year.ifBlank { null },
+                    year.ifBlank { null },
                     rating?.let { "★ $it" },
-                    details?.runtime.omdbClean(),
-                    details?.rated.omdbClean()
+                    runtime
                 ).joinToString("  ·  ")
-                    .ifBlank { item.subtitleLine }
 
                 if (metaLine.isNotEmpty()) {
                     Text(text = metaLine, color = CinemaMuted, style = MaterialTheme.typography.bodyMedium)
                 }
 
-                val genreLine = details?.genre.omdbClean() ?: item.genre.ifBlank { null }
+                val genreLine = details?.genres.orEmpty()
+                    .mapNotNull { it.name }
+                    .joinToString(", ")
+                    .ifBlank { null }
+                    ?: item.genre.ifBlank { null }
                 if (genreLine != null) {
                     Text(text = genreLine, color = CinemaMuted, style = MaterialTheme.typography.bodySmall)
                 }
@@ -256,7 +295,7 @@ fun DetailScreen(
                     Text(text = "No episode list available.", color = CinemaMuted)
                 else -> Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     state.episodes.forEach { ep ->
-                        val number = ep.episode?.toIntOrNull()
+                        val number = ep.episodeNumber
                         val selected = number != null && number == episode
                         Row(
                             modifier = Modifier
@@ -269,36 +308,32 @@ fun DetailScreen(
                                 .padding(horizontal = 12.dp, vertical = 10.dp),
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            Text(text = "E${ep.episode ?: "?"}", color = CinemaText)
+                            Text(text = "E${number ?: "?"}", color = CinemaText)
                             Text(
-                                text = ep.title.omdbClean() ?: "Episode",
+                                text = ep.name?.takeIf { it.isNotBlank() } ?: "Episode",
                                 color = CinemaText,
                                 modifier = Modifier.weight(1f)
                             )
-                            ep.imdbRating.omdbClean()?.let { Text(text = "★ $it", color = CinemaMuted) }
+                            ep.voteAverage?.takeIf { it > 0 }?.let {
+                                Text(text = "★ " + String.format(Locale.US, "%.1f", it), color = CinemaMuted)
+                            }
                         }
                     }
                 }
             }
         }
 
-        // ---- Info from OMDb ----
+        // ---- Info from TMDB ----
         when {
-            imdbId == null ->
-                Text(
-                    text = "Details need an IMDb ID, which this title does not have.",
-                    color = CinemaMuted
-                )
-
             apiKey.isBlank() || editingKey ->
-                ApiKeyCard(
+                KeyCard(
                     message = if (apiKey.isBlank()) {
-                        "Add a free OMDb key to see the plot, cast, director and episode lists."
+                        "Add a free TMDB key to see the plot, cast, director, episodes and to search by actor."
                     } else {
-                        "Enter a new OMDb key."
+                        "Enter a new TMDB key."
                     },
                     onSave = { key ->
-                        AppPrefs.setOmdbKey(context, key)
+                        AppPrefs.setTmdbKey(context, key)
                         apiKey = key
                         editingKey = false
                     }
@@ -309,91 +344,97 @@ fun DetailScreen(
             state.error != null -> Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(text = state.error.orEmpty(), color = CinemaRed)
                 Row {
-                    TextButton(onClick = { vm.retry(imdbId, apiKey) }) { Text("Retry") }
+                    TextButton(onClick = { vm.retry(item.tmdbId, item.imdbId, item.isTv, apiKey) }) {
+                        Text("Retry")
+                    }
                     TextButton(onClick = { editingKey = true }) { Text("Change key") }
                 }
             }
 
             details != null -> {
-                InfoSection(
-                    details = details,
-                    translating = state.translating,
-                    translation = state.translation,
-                    showTranslation = state.showTranslation,
-                    translateError = state.translateError,
-                    onToggleTranslation = vm::toggleTranslation
-                )
-                TextButton(onClick = { editingKey = true }) { Text("Change OMDb key") }
-            }
-        }
-    }
-}
-
-@Composable
-private fun InfoSection(
-    details: OmdbDetails,
-    translating: Boolean,
-    translation: String?,
-    showTranslation: Boolean,
-    translateError: String?,
-    onToggleTranslation: () -> Unit
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        val plot = details.plot.omdbClean()
-        if (plot != null) {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(text = "Plot", color = CinemaText, style = MaterialTheme.typography.titleMedium)
-
-                if (showTranslation && translation != null) {
-                    Text(
-                        text = translation,
-                        color = CinemaMuted,
-                        style = MaterialTheme.typography.bodyMedium.copy(
-                            textDirection = TextDirection.Rtl
-                        ),
-                        textAlign = TextAlign.Start,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                } else {
-                    Text(text = plot, color = CinemaMuted, style = MaterialTheme.typography.bodyMedium)
+                details.tagline?.takeIf { it.isNotBlank() }?.let {
+                    Text(text = it, color = CinemaMuted, style = MaterialTheme.typography.bodyMedium)
                 }
 
-                TextButton(onClick = onToggleTranslation, enabled = !translating) {
-                    Text(
-                        when {
-                            translating -> "Translating…"
-                            showTranslation -> "Show original"
-                            translation != null -> "Show Persian translation"
-                            else -> "Translate to Persian"
+                val overview = state.overview
+                if (overview != null) {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(text = "Plot", color = CinemaText, style = MaterialTheme.typography.titleMedium)
+
+                        val showPersian = state.showTranslation && state.translation != null
+                        val shown = if (showPersian) state.translation.orEmpty() else overview
+                        val rtl = showPersian || !state.overviewIsEnglish
+
+                        Text(
+                            text = shown,
+                            color = CinemaMuted,
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                textDirection = if (rtl) TextDirection.Content else TextDirection.Ltr
+                            ),
+                            textAlign = TextAlign.Start,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        if (state.overviewIsEnglish) {
+                            TextButton(onClick = vm::toggleTranslation, enabled = !state.translating) {
+                                Text(
+                                    when {
+                                        state.translating -> "Translating…"
+                                        showPersian -> "Show original"
+                                        state.translation != null -> "Show Persian translation"
+                                        else -> "Translate to Persian"
+                                    }
+                                )
+                            }
                         }
-                    )
+
+                        state.translateError?.let {
+                            Text(text = it, color = CinemaRed, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
                 }
 
-                translateError?.let { Text(text = it, color = CinemaRed, style = MaterialTheme.typography.bodySmall) }
+                PeopleRow(
+                    title = if (item.isTv) "Created by" else "Director",
+                    people = directors,
+                    onClick = onPersonClick
+                )
+                PeopleRow(title = "Cast", people = cast, onClick = onPersonClick)
+
+                TextButton(onClick = { editingKey = true }) { Text("Change TMDB key") }
             }
         }
-
-        InfoRow("Director", details.director)
-        InfoRow("Writer", details.writer)
-        InfoRow("Cast", details.actors)
-        InfoRow("Language", details.language)
-        InfoRow("Country", details.country)
-        InfoRow("Released", details.released)
-        InfoRow("Awards", details.awards)
     }
 }
 
 @Composable
-private fun InfoRow(label: String, value: String?) {
-    val text = value.omdbClean() ?: return
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text(text = label, color = CinemaHint, style = MaterialTheme.typography.labelMedium)
-        Text(text = text, color = CinemaText, style = MaterialTheme.typography.bodyMedium)
+private fun PeopleRow(
+    title: String,
+    people: List<PersonChip>,
+    onClick: (id: Int, name: String) -> Unit
+) {
+    if (people.isEmpty()) return
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(text = title, color = CinemaText, style = MaterialTheme.typography.titleMedium)
+        Row(
+            modifier = Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            people.forEach { person ->
+                PersonAvatar(
+                    photoUrl = person.photoUrl,
+                    name = person.name,
+                    subtitle = person.subtitle,
+                    onClick = { onClick(person.id, person.name) }
+                )
+            }
+        }
     }
 }
 
 @Composable
-private fun ApiKeyCard(message: String, onSave: (String) -> Unit) {
+private fun KeyCard(message: String, onSave: (String) -> Unit) {
     var text by rememberSaveable { mutableStateOf("") }
 
     Column(
@@ -405,7 +446,8 @@ private fun ApiKeyCard(message: String, onSave: (String) -> Unit) {
     ) {
         Text(text = message, color = CinemaText, style = MaterialTheme.typography.bodyMedium)
         Text(
-            text = "Free key: omdbapi.com/apikey.aspx (you activate it with a link sent by email).",
+            text = "Free key: themoviedb.org → Settings → API. Either the API key or the " +
+                "read-access token works. TMDB may need a VPN in some countries.",
             color = CinemaHint,
             style = MaterialTheme.typography.bodySmall
         )
@@ -414,7 +456,7 @@ private fun ApiKeyCard(message: String, onSave: (String) -> Unit) {
             value = text,
             onValueChange = { text = it.trim() },
             singleLine = true,
-            placeholder = { Text("OMDb API key", color = CinemaHint) },
+            placeholder = { Text("TMDB key", color = CinemaHint) },
             colors = OutlinedTextFieldDefaults.colors(
                 focusedTextColor = CinemaText,
                 unfocusedTextColor = CinemaText,
