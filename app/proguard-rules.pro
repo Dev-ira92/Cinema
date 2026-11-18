@@ -1,0 +1,6 @@
+-keep class com.cinema.data.model.** { *; }
+-keep class com.cinema.data.api.Tmdb* { *; }
+-keep class com.cinema.data.api.PersonItem { *; }
+-keepattributes Signature, *Annotation*
+-keep,allowobfuscation interface com.cinema.data.api.TmdbService
+-keep,allowobfuscation interface com.cinema.data.api.VidApi
