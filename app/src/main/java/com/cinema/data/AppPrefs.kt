@@ -39,6 +39,6 @@ object AppPrefs {
     fun setTmdbKey(context: Context, key: String) {
         val clean = key.trim()
         prefs(context).edit().putString(KEY_TMDB, clean).apply()
-        TmdbConfig.key = clean
+        TmdbConfig.key = clean.ifBlank { BuildConfig.TMDB_DEFAULT_KEY }
     }
 }
