@@ -1,15 +1,22 @@
 package com.cinema.ui.screens
 
 import android.app.Activity
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.ContextWrapper
+import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.graphics.Bitmap
+import android.net.Uri
+import android.net.http.SslError
 import android.view.View
 import android.view.ViewGroup
+import android.webkit.CookieManager
+import android.webkit.SslErrorHandler
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -24,6 +31,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -52,9 +61,11 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.LifecycleOwner
 import com.cinema.data.api.VidApiPlayer
+import com.cinema.ui.theme.CinemaHint
 import com.cinema.ui.theme.CinemaPrimary
 import com.cinema.ui.theme.CinemaRed
 import com.cinema.ui.theme.CinemaText
+import kotlinx.coroutines.delay
 
 @Composable
 fun PlayerScreen(
@@ -69,11 +80,13 @@ fun PlayerScreen(
 
     var loading by remember { mutableStateOf(safeUrl != null) }
     var error by remember { mutableStateOf<String?>(null) }
+    var status by remember { mutableStateOf("Starting…") }
+    var slow by remember { mutableStateOf(false) }
 
     var fullscreenView by remember { mutableStateOf<View?>(null) }
     var fullscreenCallback by remember { mutableStateOf<WebChromeClient.CustomViewCallback?>(null) }
 
-    // Plain holder (not state): only used from lifecycle callbacks.
+    // Plain holder (not state): only used from callbacks.
     val webViewHolder = remember { arrayOfNulls<WebView>(1) }
 
     fun exitFullscreen() {
@@ -86,6 +99,9 @@ fun PlayerScreen(
         if (safeUrl == null) {
             loading = false
             error = "Invalid player URL."
+        } else {
+            delay(20_000)
+            if (loading) slow = true
         }
     }
 
@@ -149,9 +165,53 @@ fun PlayerScreen(
                     style = MaterialTheme.typography.titleMedium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(end = 16.dp)
+                    modifier = Modifier.weight(1f)
                 )
+                IconButton(
+                    onClick = {
+                        error = null
+                        loading = true
+                        slow = false
+                        status = "Reloading…"
+                        webViewHolder[0]?.reload()
+                    }
+                ) {
+                    Icon(Icons.Default.Refresh, contentDescription = "Reload", tint = CinemaText)
+                }
+                IconButton(
+                    onClick = {
+                        if (safeUrl != null) {
+                            try {
+                                context.startActivity(
+                                    Intent(Intent.ACTION_VIEW, Uri.parse(safeUrl))
+                                )
+                            } catch (_: ActivityNotFoundException) {
+                                status = "No browser app found."
+                            }
+                        }
+                    }
+                ) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.OpenInNew,
+                        contentDescription = "Open in browser",
+                        tint = CinemaText
+                    )
+                }
             }
+
+            // Diagnostics line: tells us WHY a black screen happens.
+            Text(
+                text = if (slow && loading) {
+                    "Still loading… the player site may be unreachable from this network. $status"
+                } else {
+                    status
+                },
+                color = CinemaHint,
+                style = MaterialTheme.typography.labelSmall,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
+            )
 
             Box(
                 modifier = Modifier
@@ -173,9 +233,18 @@ fun PlayerScreen(
                                     mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
                                     javaScriptCanOpenWindowsAutomatically = false
                                     setSupportMultipleWindows(false)
+                                    // Some players refuse the default WebView user agent ("; wv").
+                                    userAgentString = userAgentString.replace("; wv", "")
                                 }
 
+                                CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+
                                 webChromeClient = object : WebChromeClient() {
+                                    override fun onProgressChanged(view: WebView?, newProgress: Int) {
+                                        if (error == null) status = "Loading $newProgress%"
+                                        if (newProgress >= 90) loading = false
+                                    }
+
                                     override fun onShowCustomView(
                                         view: View?,
                                         callback: WebChromeClient.CustomViewCallback?
@@ -197,15 +266,19 @@ fun PlayerScreen(
                                 webViewClient = object : WebViewClient() {
                                     override fun onPageStarted(
                                         view: WebView?,
-                                        url: String?,
+                                        pageUrl: String?,
                                         favicon: Bitmap?
                                     ) {
                                         loading = true
                                         error = null
+                                        status = "Opening ${Uri.parse(pageUrl ?: "").host.orEmpty()}…"
                                     }
 
-                                    override fun onPageFinished(view: WebView?, url: String?) {
+                                    override fun onPageFinished(view: WebView?, pageUrl: String?) {
                                         loading = false
+                                        if (error == null) {
+                                            status = "Loaded ${Uri.parse(pageUrl ?: "").host.orEmpty()}"
+                                        }
                                     }
 
                                     override fun onReceivedError(
@@ -213,17 +286,45 @@ fun PlayerScreen(
                                         request: WebResourceRequest?,
                                         err: WebResourceError?
                                     ) {
+                                        val detail = "${err?.errorCode}: ${err?.description}"
                                         if (request?.isForMainFrame == true) {
                                             loading = false
-                                            error = "Unable to load the player. Check your connection."
+                                            error = "Unable to load the player ($detail)."
+                                            status = "Error $detail"
+                                        } else {
+                                            status = "Resource error $detail (${request?.url?.host})"
                                         }
+                                    }
+
+                                    override fun onReceivedHttpError(
+                                        view: WebView?,
+                                        request: WebResourceRequest?,
+                                        errorResponse: WebResourceResponse?
+                                    ) {
+                                        val code = errorResponse?.statusCode ?: return
+                                        status = "HTTP $code from ${request?.url?.host}${request?.url?.path.orEmpty()}"
+                                    }
+
+                                    override fun onReceivedSslError(
+                                        view: WebView?,
+                                        handler: SslErrorHandler?,
+                                        sslError: SslError?
+                                    ) {
+                                        handler?.cancel()
+                                        loading = false
+                                        error = "Secure connection failed (SSL ${sslError?.primaryError})."
+                                        status = "SSL error ${sslError?.primaryError}"
                                     }
 
                                     // Never leave https (blocks intent:// and similar redirects).
                                     override fun shouldOverrideUrlLoading(
                                         view: WebView?,
                                         request: WebResourceRequest?
-                                    ): Boolean = request?.url?.scheme != "https"
+                                    ): Boolean {
+                                        val blocked = request?.url?.scheme != "https"
+                                        if (blocked) status = "Blocked redirect: ${request?.url}"
+                                        return blocked
+                                    }
                                 }
 
                                 webViewHolder[0] = this
