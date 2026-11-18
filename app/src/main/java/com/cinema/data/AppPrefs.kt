@@ -17,6 +17,7 @@ object AppPrefs {
 
     private const val FILE = "cinema_prefs"
     private const val KEY_SUBTITLE_LANG = "subtitle_lang"
+    private const val KEY_OMDB = "omdb_key"
 
     private fun prefs(context: Context) =
         context.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
@@ -26,5 +27,12 @@ object AppPrefs {
 
     fun setSubtitleLang(context: Context, code: String) {
         prefs(context).edit().putString(KEY_SUBTITLE_LANG, code).apply()
+    }
+
+    fun omdbKey(context: Context): String =
+        prefs(context).getString(KEY_OMDB, "") ?: ""
+
+    fun setOmdbKey(context: Context, key: String) {
+        prefs(context).edit().putString(KEY_OMDB, key.trim()).apply()
     }
 }
