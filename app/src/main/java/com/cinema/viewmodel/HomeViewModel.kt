@@ -3,6 +3,11 @@ package com.cinema.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cinema.data.api.ImdbSuggestApi
+import com.cinema.data.api.PersonItem
+import com.cinema.data.api.TmdbApi
+import com.cinema.data.api.TmdbConfig
+import com.cinema.data.api.toMediaItem as tmdbToMediaItem
+import com.cinema.data.api.toPersonItem
 import com.cinema.data.api.VidApiClient
 import com.cinema.data.model.MediaItem
 import com.cinema.data.model.toMediaItem
@@ -62,6 +67,7 @@ data class HomeUiState(
     val query: String = "",
     val searching: Boolean = false,
     val results: List<MediaItem> = emptyList(),
+    val people: List<PersonItem> = emptyList(),
     val searchError: String? = null
 )
 
@@ -123,7 +129,13 @@ class HomeViewModel : ViewModel() {
         searchJob?.cancel()
 
         _state.update {
-            it.copy(query = value, searching = false, results = emptyList(), searchError = null)
+            it.copy(
+                query = value,
+                searching = false,
+                results = emptyList(),
+                people = emptyList(),
+                searchError = null
+            )
         }
 
         val query = value.trim()
@@ -134,25 +146,52 @@ class HomeViewModel : ViewModel() {
             delay(400) // debounce typing
 
             try {
-                val results = ImdbSuggestApi.search(query)
+                val (people, results) = search(query)
                 _state.update {
                     it.copy(
                         searching = false,
                         results = results,
-                        searchError = if (results.isEmpty()) "No results for \"$query\"." else null
+                        people = people,
+                        searchError = if (results.isEmpty() && people.isEmpty()) {
+                            "No results for \"$query\"."
+                        } else {
+                            null
+                        }
                     )
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 _state.update {
-                    it.copy(searching = false, results = emptyList(), searchError = e.toUserMessage())
+                    it.copy(
+                        searching = false,
+                        results = emptyList(),
+                        people = emptyList(),
+                        searchError = e.toUserMessage()
+                    )
                 }
             }
         }
     }
 
     fun clearSearch() = onQueryChanged("")
+
+    /** TMDB search (titles + people) when a key is set; falls back to IMDb suggestions. */
+    private suspend fun search(query: String): Pair<List<PersonItem>, List<MediaItem>> {
+        if (!TmdbConfig.hasKey) {
+            return emptyList<PersonItem>() to ImdbSuggestApi.search(query)
+        }
+        return try {
+            val hits = TmdbApi.service.searchMulti(query, "en-US", 1, false).results.orEmpty()
+            val people = hits.mapNotNull { it.toPersonItem() }.take(12)
+            val titles = hits.mapNotNull { it.tmdbToMediaItem() }
+            people to titles
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            emptyList<PersonItem>() to ImdbSuggestApi.search(query)
+        }
+    }
 
     private fun feedOf(tab: HomeTab): FeedState =
         if (tab == HomeTab.MOVIES) _state.value.movies else _state.value.tv
