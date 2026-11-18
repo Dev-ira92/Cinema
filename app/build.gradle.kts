@@ -15,6 +15,9 @@ android {
         versionCode = 1
         versionName = "1.0"
 
+        // Default TMDB credential (v3 API key). Override without editing code via
+        // -PTMDB_API_KEY=... or the TMDB_API_KEY environment variable. The user can
+        // still replace it at runtime from the in-app settings.
         val tmdbKey = (providers.gradleProperty("TMDB_API_KEY").orNull
             ?: System.getenv("TMDB_API_KEY")
             ?: "b8682ea087c2699ba1eb9caab08d9077")
