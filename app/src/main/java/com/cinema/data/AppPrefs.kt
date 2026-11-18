@@ -1,6 +1,7 @@
 package com.cinema.data
 
 import android.content.Context
+import com.cinema.data.api.TmdbConfig
 
 object AppPrefs {
 
@@ -17,7 +18,7 @@ object AppPrefs {
 
     private const val FILE = "cinema_prefs"
     private const val KEY_SUBTITLE_LANG = "subtitle_lang"
-    private const val KEY_OMDB = "omdb_key"
+    private const val KEY_TMDB = "tmdb_key"
 
     private fun prefs(context: Context) =
         context.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
@@ -29,10 +30,12 @@ object AppPrefs {
         prefs(context).edit().putString(KEY_SUBTITLE_LANG, code).apply()
     }
 
-    fun omdbKey(context: Context): String =
-        prefs(context).getString(KEY_OMDB, "") ?: ""
+    fun tmdbKey(context: Context): String =
+        prefs(context).getString(KEY_TMDB, "") ?: ""
 
-    fun setOmdbKey(context: Context, key: String) {
-        prefs(context).edit().putString(KEY_OMDB, key.trim()).apply()
+    fun setTmdbKey(context: Context, key: String) {
+        val clean = key.trim()
+        prefs(context).edit().putString(KEY_TMDB, clean).apply()
+        TmdbConfig.key = clean
     }
 }
