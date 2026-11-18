@@ -15,15 +15,20 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.cinema.data.AppPrefs
+import com.cinema.data.api.TmdbConfig
 import com.cinema.data.model.MediaItem
 import com.cinema.ui.screens.DetailScreen
 import com.cinema.ui.screens.HomeScreen
+import com.cinema.ui.screens.PersonScreen
 import com.cinema.ui.screens.PlayerScreen
 import com.cinema.ui.theme.CinemaTheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        TmdbConfig.key = AppPrefs.tmdbKey(this)
 
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
@@ -45,6 +50,11 @@ private const val ROUTE_DETAIL =
         "&year={year}&poster={poster}&rating={rating}&genre={genre}"
 
 private const val ROUTE_PLAYER = "player?url={url}&title={title}"
+
+private const val ROUTE_PERSON = "person?id={id}&name={name}"
+
+private fun personRoute(id: Int, name: String): String =
+    "person?id=$id&name=${Uri.encode(name)}"
 
 private fun stringArg(name: String): NamedNavArgument =
     navArgument(name) {
@@ -72,7 +82,8 @@ fun CinemaNavigation() {
     ) {
         composable(ROUTE_HOME) {
             HomeScreen(
-                onMediaClick = { item -> navController.navigate(detailRoute(item)) }
+                onMediaClick = { item -> navController.navigate(detailRoute(item)) },
+                onPersonClick = { id, name -> navController.navigate(personRoute(id, name)) }
             )
         }
 
@@ -115,9 +126,28 @@ fun CinemaNavigation() {
                         navController.navigate(
                             "player?url=${Uri.encode(url)}&title=${Uri.encode(title)}"
                         )
-                    }
+                    },
+                    onPersonClick = { id, name -> navController.navigate(personRoute(id, name)) }
                 )
             }
+        }
+
+        composable(
+            route = ROUTE_PERSON,
+            arguments = listOf(
+                navArgument("id") {
+                    type = NavType.IntType
+                    defaultValue = 0
+                },
+                stringArg("name")
+            )
+        ) { entry ->
+            PersonScreen(
+                personId = entry.arguments?.getInt("id") ?: 0,
+                fallbackName = entry.arguments?.getString("name").orEmpty(),
+                onBack = { navController.popBackStack() },
+                onTitleClick = { item -> navController.navigate(detailRoute(item)) }
+            )
         }
 
         composable(
