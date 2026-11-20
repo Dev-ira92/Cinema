@@ -3,7 +3,20 @@ package com.cinema.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -12,14 +25,35 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Remove
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.ui.*
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.style.*
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDirection
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -28,7 +62,13 @@ import com.cinema.data.AppPrefs
 import com.cinema.data.api.VidApiPlayer
 import com.cinema.data.api.tmdbImage
 import com.cinema.data.model.MediaItem
-import com.cinema.ui.theme.*
+import com.cinema.ui.theme.CinemaBackground
+import com.cinema.ui.theme.CinemaCard
+import com.cinema.ui.theme.CinemaHint
+import com.cinema.ui.theme.CinemaMuted
+import com.cinema.ui.theme.CinemaPrimary
+import com.cinema.ui.theme.CinemaRed
+import com.cinema.ui.theme.CinemaText
 import com.cinema.viewmodel.DetailViewModel
 import java.util.Locale
 
@@ -58,8 +98,8 @@ fun DetailScreen(
     var apiKey       by remember { mutableStateOf(AppPrefs.tmdbKey(context)) }
     var editingKey   by remember { mutableStateOf(false) }
 
-    val details    = state.details
-    val maxSeason  = (details?.numberOfSeasons ?: 99).coerceIn(1, 99)
+    val details   = state.details
+    val maxSeason = (details?.numberOfSeasons ?: 99).coerceIn(1, 99)
 
     LaunchedEffect(item.tmdbId, item.imdbId, item.isTv, apiKey) {
         vm.load(item.tmdbId, item.imdbId, item.isTv, apiKey)
@@ -69,7 +109,7 @@ fun DetailScreen(
         if (item.isTv && details != null) vm.loadSeason(season)
     }
 
-    // Build vaplayer embed URL for current selection
+    // vaplayer embed URL
     val embedUrl: String? = remember(item, season, episode, subtitleLang) {
         val id   = item.embedId ?: return@remember null
         val lang = subtitleLang.ifBlank { null }
@@ -107,7 +147,8 @@ fun DetailScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // ── Back ─────────────────────────────────────────────────────────────
+
+        // ── Back ──────────────────────────────────────────────────────────────
         IconButton(onClick = onBack) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = CinemaText)
         }
@@ -161,12 +202,14 @@ fun DetailScreen(
                 if (genreLine != null)
                     Text(genreLine, color = CinemaMuted, style = MaterialTheme.typography.bodySmall)
 
-                Text(if (item.isTv) "TV series" else "Movie",
-                    color = CinemaHint, style = MaterialTheme.typography.labelMedium)
+                Text(
+                    if (item.isTv) "TV series" else "Movie",
+                    color = CinemaHint, style = MaterialTheme.typography.labelMedium
+                )
             }
         }
 
-        // ── Season / Episode steppers (TV) ────────────────────────────────────
+        // ── Season / Episode (TV) ─────────────────────────────────────────────
         if (item.isTv) {
             Stepper("Season",  season,  1, maxSeason) { season  = it; episode = 1 }
             Stepper("Episode", episode, 1, 999       ) { episode = it }
@@ -188,22 +231,23 @@ fun DetailScreen(
                     },
                     label  = { Text(language.label) },
                     colors = FilterChipDefaults.filterChipColors(
-                        labelColor              = CinemaMuted,
-                        selectedContainerColor  = CinemaPrimary,
-                        selectedLabelColor      = CinemaText
+                        labelColor             = CinemaMuted,
+                        selectedContainerColor = CinemaPrimary,
+                        selectedLabelColor     = CinemaText
                     )
                 )
             }
         }
 
-        // ── Play via WebView (vaplayer) ────────────────────────────────────────
+        // ── Play via WebView ──────────────────────────────────────────────────
         Button(
             onClick = {
                 if (embedUrl == null) {
                     playError = "This title has no valid ID."
                 } else {
                     playError = null
-                    val label = if (item.isTv) "${item.title} · S${season}E${episode}" else item.title
+                    val label = if (item.isTv) "${item.title} · S${season}E${episode}"
+                                else item.title
                     onPlay(embedUrl, label)
                 }
             },
@@ -212,12 +256,12 @@ fun DetailScreen(
         ) {
             Icon(Icons.Default.PlayArrow, null)
             Spacer(Modifier.width(8.dp))
-            Text("Play (built-in browser player)")
+            Text("Play (browser player)")
         }
 
         playError?.let { Text(it, color = CinemaRed) }
 
-        // ── Internal player section ───────────────────────────────────────────
+        // ── Internal Player (ExoPlayer) ───────────────────────────────────────
         HorizontalDivider(color = CinemaCard)
 
         Column(
@@ -227,9 +271,10 @@ fun DetailScreen(
                 .padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Text("Internal Player", color = CinemaText, style = MaterialTheme.typography.titleMedium)
+            Text("Internal Player (ExoPlayer)", color = CinemaText,
+                style = MaterialTheme.typography.titleMedium)
             Text(
-                "Extracts the direct stream URL from the player site and plays it with ExoPlayer.",
+                "Extracts the direct stream URL and plays it with ExoPlayer.",
                 color = CinemaHint, style = MaterialTheme.typography.bodySmall
             )
 
@@ -260,20 +305,15 @@ fun DetailScreen(
                         strokeWidth = 2.dp,
                         color       = CinemaPrimary
                     )
-                    Text(
-                        state.streamStatus,
-                        color = CinemaMuted,
-                        style = MaterialTheme.typography.bodySmall
-                    )
+                    Text(state.streamStatus, color = CinemaMuted,
+                        style = MaterialTheme.typography.bodySmall)
                 }
             }
 
-            // Error
             state.streamError?.let {
                 Text(it, color = CinemaRed, style = MaterialTheme.typography.bodySmall)
             }
 
-            // Success — show play button
             state.extractedStream?.let { stream ->
                 Text(
                     "✓  ${state.streamStatus}",
@@ -293,7 +333,7 @@ fun DetailScreen(
                 ) {
                     Icon(Icons.Default.PlayArrow, null)
                     Spacer(Modifier.width(6.dp))
-                    Text("▶  Play with ExoPlayer (${stream.quality})", fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                    Text("Play with ExoPlayer (${stream.quality})", fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -330,7 +370,10 @@ fun DetailScreen(
                                 modifier = Modifier.weight(1f)
                             )
                             ep.voteAverage?.takeIf { it > 0 }?.let {
-                                Text("★ " + String.format(Locale.US, "%.1f", it), color = CinemaMuted)
+                                Text(
+                                    "★ " + String.format(Locale.US, "%.1f", it),
+                                    color = CinemaMuted
+                                )
                             }
                         }
                     }
@@ -393,10 +436,10 @@ fun DetailScreen(
                                 enabled = !state.translating
                             ) {
                                 Text(when {
-                                    state.translating   -> "Translating…"
-                                    showPersian         -> "Show original"
+                                    state.translating        -> "Translating..."
+                                    showPersian              -> "Show original"
                                     state.translation != null -> "Show Persian translation"
-                                    else                -> "Translate to Persian"
+                                    else                     -> "Translate to Persian"
                                 })
                             }
                         }
@@ -420,7 +463,7 @@ fun DetailScreen(
     }
 }
 
-// ── Small composables ─────────────────────────────────────────────────────────
+// ── Composables ───────────────────────────────────────────────────────────────
 
 @Composable
 private fun PeopleRow(
@@ -448,6 +491,54 @@ private fun PeopleRow(
 }
 
 @Composable
+private fun PersonAvatar(
+    photoUrl: String?,
+    name    : String,
+    subtitle: String,
+    onClick : () -> Unit
+) {
+    Column(
+        modifier            = Modifier
+            .width(80.dp)
+            .clickable(onClick = onClick),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(64.dp)
+                .clip(RoundedCornerShape(50))
+                .background(CinemaCard)
+        ) {
+            if (photoUrl != null) {
+                AsyncImage(
+                    model              = photoUrl,
+                    contentDescription = name,
+                    contentScale       = ContentScale.Crop,
+                    modifier           = Modifier.fillMaxSize()
+                )
+            }
+        }
+        Text(
+            text      = name,
+            color     = CinemaText,
+            style     = MaterialTheme.typography.labelSmall,
+            maxLines  = 1,
+            overflow  = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center
+        )
+        Text(
+            text      = subtitle,
+            color     = CinemaHint,
+            style     = MaterialTheme.typography.labelSmall,
+            maxLines  = 1,
+            overflow  = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center
+        )
+    }
+}
+
+@Composable
 private fun KeyCard(message: String, onSave: (String) -> Unit) {
     var text by rememberSaveable { mutableStateOf("") }
     Column(
@@ -468,13 +559,13 @@ private fun KeyCard(message: String, onSave: (String) -> Unit) {
             singleLine    = true,
             placeholder   = { Text("TMDB key", color = CinemaHint) },
             colors        = OutlinedTextFieldDefaults.colors(
-                focusedTextColor    = CinemaText,
-                unfocusedTextColor  = CinemaText,
-                focusedBorderColor  = CinemaPrimary,
-                unfocusedBorderColor= CinemaHint,
-                cursorColor         = CinemaPrimary
+                focusedTextColor     = CinemaText,
+                unfocusedTextColor   = CinemaText,
+                focusedBorderColor   = CinemaPrimary,
+                unfocusedBorderColor = CinemaHint,
+                cursorColor          = CinemaPrimary
             ),
-            modifier      = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth()
         )
         Button(
             onClick = { if (text.isNotBlank()) onSave(text) },
@@ -499,14 +590,18 @@ private fun Stepper(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(label, color = CinemaText,
-            style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+            style    = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.weight(1f))
         IconButton(onClick = { if (value > min) onChange(value - 1) }) {
             Icon(Icons.Default.Remove, "Decrease $label", tint = CinemaText)
         }
-        Text(value.toString(), color = CinemaText,
-            style = MaterialTheme.typography.titleMedium,
+        Text(
+            value.toString(),
+            color     = CinemaText,
+            style     = MaterialTheme.typography.titleMedium,
             textAlign = TextAlign.Center,
-            modifier = Modifier.widthIn(min = 40.dp))
+            modifier  = Modifier.widthIn(min = 40.dp)
+        )
         IconButton(onClick = { if (value < max) onChange(value + 1) }) {
             Icon(Icons.Default.Add, "Increase $label", tint = CinemaText)
         }
