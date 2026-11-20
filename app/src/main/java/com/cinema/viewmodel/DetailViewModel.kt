@@ -29,7 +29,7 @@ data class DetailUiState(
     val translation       : String?          = null,
     val showTranslation   : Boolean          = false,
     val translateError    : String?          = null,
-    val episodes          : List<TmdbEpisode>= emptyList(),
+    val episodes          : List<TmdbEpisode> = emptyList(),
     val episodesLoading   : Boolean          = false,
     val episodesError     : String?          = null,
     val streamLoading     : Boolean          = false,
