@@ -20,27 +20,22 @@ import retrofit2.HttpException
 import java.io.IOException
 
 data class DetailUiState(
-    val loading          : Boolean          = false,
-    val error            : String?          = null,
-    val details          : TmdbDetails?     = null,
-
-    val overview         : String?          = null,
-    val overviewIsEnglish: Boolean          = false,
-
-    val translating      : Boolean          = false,
-    val translation      : String?          = null,
-    val showTranslation  : Boolean          = false,
-    val translateError   : String?          = null,
-
-    val episodes         : List<TmdbEpisode>= emptyList(),
-    val episodesLoading  : Boolean          = false,
-    val episodesError    : String?          = null,
-
-    // ── direct stream extraction ──────────────────────────────────
-    val streamLoading    : Boolean          = false,
-    val streamStatus     : String           = "",
-    val streamError      : String?          = null,
-    val extractedStream  : ExtractedStream? = null,
+    val loading           : Boolean          = false,
+    val error             : String?          = null,
+    val details           : TmdbDetails?     = null,
+    val overview          : String?          = null,
+    val overviewIsEnglish : Boolean          = false,
+    val translating       : Boolean          = false,
+    val translation       : String?          = null,
+    val showTranslation   : Boolean          = false,
+    val translateError    : String?          = null,
+    val episodes          : List<TmdbEpisode>= emptyList(),
+    val episodesLoading   : Boolean          = false,
+    val episodesError     : String?          = null,
+    val streamLoading     : Boolean          = false,
+    val streamStatus      : String           = "",
+    val streamError       : String?          = null,
+    val extractedStream   : ExtractedStream? = null,
 )
 
 class DetailViewModel : ViewModel() {
@@ -54,7 +49,7 @@ class DetailViewModel : ViewModel() {
     private var streamJob   : Job?    = null
     private val seasonCache = mutableMapOf<Int, List<TmdbEpisode>>()
 
-    // ── TMDB detail loading ───────────────────────────────────────────────────
+    // ── TMDB detail ───────────────────────────────────────────────────────────
 
     fun load(tmdbIdText: String?, imdbId: String?, isTv: Boolean, key: String) {
         if (key.isBlank() || (tmdbIdText == null && imdbId == null)) return
@@ -70,32 +65,29 @@ class DetailViewModel : ViewModel() {
         viewModelScope.launch {
             try {
                 val api = TmdbApi.service
-
-                val id = tmdbIdText?.toIntOrNull()
+                val id  = tmdbIdText?.toIntOrNull()
                     ?: resolveFromImdb(imdbId, isTv)
                     ?: throw IllegalStateException("This title was not found on TMDB.")
                 tmdbId = id
 
-                val details = if (isTv) {
-                    api.tv(id, "fa-IR", "credits")
-                } else {
-                    api.movie(id, "fa-IR", "credits")
-                }
+                val details = if (isTv) api.tv(id, "fa-IR", "credits")
+                              else      api.movie(id, "fa-IR", "credits")
 
                 var overview = details.overview?.trim().orEmpty()
                 var english  = false
                 if (overview.isBlank()) {
-                    val fallback = if (isTv) api.tv(id, "en-US", "") else api.movie(id, "en-US", "")
+                    val fallback = if (isTv) api.tv(id, "en-US", "")
+                                   else      api.movie(id, "en-US", "")
                     overview = fallback.overview?.trim().orEmpty()
                     english  = overview.isNotBlank()
                 }
 
                 _state.update {
                     it.copy(
-                        loading          = false,
-                        details          = details,
-                        overview         = overview.ifBlank { null },
-                        overviewIsEnglish= english
+                        loading           = false,
+                        details           = details,
+                        overview          = overview.ifBlank { null },
+                        overviewIsEnglish = english
                     )
                 }
             } catch (e: CancellationException) {
@@ -127,9 +119,9 @@ class DetailViewModel : ViewModel() {
 
         seasonJob = viewModelScope.launch {
             try {
-                val episodes = TmdbApi.service.season(id, season, "en-US").episodes.orEmpty()
-                seasonCache[season] = episodes
-                _state.update { it.copy(episodes = episodes, episodesLoading = false) }
+                val eps = TmdbApi.service.season(id, season, "en-US").episodes.orEmpty()
+                seasonCache[season] = eps
+                _state.update { it.copy(episodes = eps, episodesLoading = false) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -168,7 +160,7 @@ class DetailViewModel : ViewModel() {
         }
     }
 
-    // ── Direct stream extraction ──────────────────────────────────────────────
+    // ── Stream extraction ─────────────────────────────────────────────────────
 
     fun fetchDirectStream(context: Context, embedUrl: String) {
         if (_state.value.streamLoading) return
@@ -176,10 +168,10 @@ class DetailViewModel : ViewModel() {
         streamJob = viewModelScope.launch {
             _state.update {
                 it.copy(
-                    streamLoading  = true,
-                    streamStatus   = "Starting…",
-                    streamError    = null,
-                    extractedStream= null
+                    streamLoading   = true,
+                    streamStatus    = "Starting...",
+                    streamError     = null,
+                    extractedStream = null
                 )
             }
             val result = extractStreamFromEmbed(
@@ -194,7 +186,8 @@ class DetailViewModel : ViewModel() {
                     streamStatus    = if (result != null) "Stream ready — ${result.quality}"
                                       else "No stream found",
                     streamError     = if (result == null)
-                        "Could not extract a stream. The site may use JavaScript protection." else null
+                        "Could not extract a direct stream. The player site may require JavaScript."
+                        else null
                 )
             }
         }
@@ -227,8 +220,8 @@ class DetailViewModel : ViewModel() {
             429  -> "Too many requests. Try again in a moment."
             else -> "Request failed (HTTP ${code()})."
         }
-        is IOException         -> "Network error. TMDB is blocked in some countries; a VPN may be required."
+        is IOException           -> "Network error. TMDB may be blocked; a VPN may be required."
         is IllegalStateException -> message ?: "Not found on TMDB."
-        else                   -> "Something went wrong."
+        else                     -> "Something went wrong."
     }
 }
