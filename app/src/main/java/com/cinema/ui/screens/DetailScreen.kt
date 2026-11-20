@@ -72,7 +72,7 @@ import com.cinema.ui.theme.CinemaText
 import com.cinema.viewmodel.DetailViewModel
 import java.util.Locale
 
-private data class PersonChip(
+private data class DetailPersonChip(
     val id      : Int,
     val name    : String,
     val subtitle: String,
@@ -109,7 +109,6 @@ fun DetailScreen(
         if (item.isTv && details != null) vm.loadSeason(season)
     }
 
-    // vaplayer embed URL
     val embedUrl: String? = remember(item, season, episode, subtitleLang) {
         val id   = item.embedId ?: return@remember null
         val lang = subtitleLang.ifBlank { null }
@@ -120,21 +119,21 @@ fun DetailScreen(
     val directors = remember(details) {
         if (item.isTv) {
             details?.createdBy.orEmpty().mapNotNull { c ->
-                c.id?.let { PersonChip(it, c.name.orEmpty(), "Creator", tmdbImage(c.profilePath, "w185")) }
+                c.id?.let { DetailPersonChip(it, c.name.orEmpty(), "Creator", tmdbImage(c.profilePath, "w185")) }
             }
         } else {
             details?.credits?.crew.orEmpty()
                 .filter { it.job == "Director" }
                 .distinctBy { it.id }
                 .mapNotNull { c ->
-                    c.id?.let { PersonChip(it, c.name.orEmpty(), "Director", tmdbImage(c.profilePath, "w185")) }
+                    c.id?.let { DetailPersonChip(it, c.name.orEmpty(), "Director", tmdbImage(c.profilePath, "w185")) }
                 }
         }
     }
 
     val cast = remember(details) {
         details?.credits?.cast.orEmpty().take(15).mapNotNull { c ->
-            c.id?.let { PersonChip(it, c.name.orEmpty(), c.character.orEmpty(), tmdbImage(c.profilePath, "w185")) }
+            c.id?.let { DetailPersonChip(it, c.name.orEmpty(), c.character.orEmpty(), tmdbImage(c.profilePath, "w185")) }
         }
     }
 
@@ -148,12 +147,10 @@ fun DetailScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
 
-        // ── Back ──────────────────────────────────────────────────────────────
         IconButton(onClick = onBack) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = CinemaText)
         }
 
-        // ── Poster + meta ─────────────────────────────────────────────────────
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             Box(
                 modifier = Modifier
@@ -209,13 +206,11 @@ fun DetailScreen(
             }
         }
 
-        // ── Season / Episode (TV) ─────────────────────────────────────────────
         if (item.isTv) {
-            Stepper("Season",  season,  1, maxSeason) { season  = it; episode = 1 }
-            Stepper("Episode", episode, 1, 999       ) { episode = it }
+            DetailStepper("Season",  season,  1, maxSeason) { season  = it; episode = 1 }
+            DetailStepper("Episode", episode, 1, 999       ) { episode = it }
         }
 
-        // ── Subtitle language ─────────────────────────────────────────────────
         Text("Subtitles", color = CinemaText, style = MaterialTheme.typography.titleMedium)
         Row(
             modifier              = Modifier.horizontalScroll(rememberScrollState()),
@@ -239,7 +234,6 @@ fun DetailScreen(
             }
         }
 
-        // ── Play via WebView ──────────────────────────────────────────────────
         Button(
             onClick = {
                 if (embedUrl == null) {
@@ -261,7 +255,6 @@ fun DetailScreen(
 
         playError?.let { Text(it, color = CinemaRed) }
 
-        // ── Internal Player (ExoPlayer) ───────────────────────────────────────
         HorizontalDivider(color = CinemaCard)
 
         Column(
@@ -338,7 +331,6 @@ fun DetailScreen(
             }
         }
 
-        // ── Episodes list (TV) ────────────────────────────────────────────────
         if (item.isTv && apiKey.isNotBlank()) {
             Text("Episodes", color = CinemaText, style = MaterialTheme.typography.titleMedium)
             when {
@@ -370,10 +362,7 @@ fun DetailScreen(
                                 modifier = Modifier.weight(1f)
                             )
                             ep.voteAverage?.takeIf { it > 0 }?.let {
-                                Text(
-                                    "★ " + String.format(Locale.US, "%.1f", it),
-                                    color = CinemaMuted
-                                )
+                                Text("★ " + String.format(Locale.US, "%.1f", it), color = CinemaMuted)
                             }
                         }
                     }
@@ -381,9 +370,8 @@ fun DetailScreen(
             }
         }
 
-        // ── TMDB info ─────────────────────────────────────────────────────────
         when {
-            apiKey.isBlank() || editingKey -> KeyCard(
+            apiKey.isBlank() || editingKey -> DetailKeyCard(
                 message = if (apiKey.isBlank())
                     "Add a free TMDB key to see the plot, cast, director and episodes."
                 else "Enter a new TMDB key.",
@@ -436,10 +424,10 @@ fun DetailScreen(
                                 enabled = !state.translating
                             ) {
                                 Text(when {
-                                    state.translating        -> "Translating..."
-                                    showPersian              -> "Show original"
+                                    state.translating         -> "Translating..."
+                                    showPersian               -> "Show original"
                                     state.translation != null -> "Show Persian translation"
-                                    else                     -> "Translate to Persian"
+                                    else                      -> "Translate to Persian"
                                 })
                             }
                         }
@@ -450,12 +438,12 @@ fun DetailScreen(
                     }
                 }
 
-                PeopleRow(
+                DetailPeopleRow(
                     title   = if (item.isTv) "Created by" else "Director",
                     people  = directors,
                     onClick = onPersonClick
                 )
-                PeopleRow(title = "Cast", people = cast, onClick = onPersonClick)
+                DetailPeopleRow(title = "Cast", people = cast, onClick = onPersonClick)
 
                 TextButton(onClick = { editingKey = true }) { Text("Change TMDB key") }
             }
@@ -463,12 +451,10 @@ fun DetailScreen(
     }
 }
 
-// ── Composables ───────────────────────────────────────────────────────────────
-
 @Composable
-private fun PeopleRow(
+private fun DetailPeopleRow(
     title  : String,
-    people : List<PersonChip>,
+    people : List<DetailPersonChip>,
     onClick: (id: Int, name: String) -> Unit
 ) {
     if (people.isEmpty()) return
@@ -479,7 +465,7 @@ private fun PeopleRow(
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             people.forEach { person ->
-                PersonAvatar(
+                DetailPersonAvatar(
                     photoUrl = person.photoUrl,
                     name     = person.name,
                     subtitle = person.subtitle,
@@ -491,7 +477,7 @@ private fun PeopleRow(
 }
 
 @Composable
-private fun PersonAvatar(
+private fun DetailPersonAvatar(
     photoUrl: String?,
     name    : String,
     subtitle: String,
@@ -539,7 +525,7 @@ private fun PersonAvatar(
 }
 
 @Composable
-private fun KeyCard(message: String, onSave: (String) -> Unit) {
+private fun DetailKeyCard(message: String, onSave: (String) -> Unit) {
     var text by rememberSaveable { mutableStateOf("") }
     Column(
         modifier = Modifier
@@ -575,7 +561,7 @@ private fun KeyCard(message: String, onSave: (String) -> Unit) {
 }
 
 @Composable
-private fun Stepper(
+private fun DetailStepper(
     label   : String,
     value   : Int,
     min     : Int,
